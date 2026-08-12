@@ -8,7 +8,7 @@ const DEFAULT_QUERY_KEYS = [
   ['appraisal'],
 ];
 
-export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY_KEYS, onEvent } = {}) {
+export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY_KEYS, onEvent, channelName } = {}) {
   if (!profileId) return () => {};
 
   let client;
@@ -18,7 +18,7 @@ export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY
     const fallback = window.setInterval(() => queryKeys.forEach((key) => invalidateQueries(key)), 5000);
     return () => window.clearInterval(fallback);
   }
-  const channel = client.channel(`faculty-updates:${profileId}`);
+  const channel = client.channel(channelName || `faculty-updates:${profileId}`);
   let pollingTimer;
 
   const invalidate = (payload) => {
@@ -30,6 +30,7 @@ export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY
     if (pollingTimer) return;
     pollingTimer = window.setInterval(() => {
       queryKeys.forEach((key) => invalidateQueries(key));
+      onEvent?.({ type: 'polling-fallback' });
     }, 5000);
   };
 

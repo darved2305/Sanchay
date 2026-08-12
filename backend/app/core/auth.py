@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 ADMIN_ROLES = frozenset({"admin", "dept_admin", "institution_admin", "reviewer"})
+JWKS_CACHE_TTL_SECONDS = 600.0
+_jwks_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 @dataclass(frozen=True)
@@ -47,25 +49,57 @@ class CurrentUser:
         return self.role in ADMIN_ROLES
 
 
-async def _jwks_key(settings: Settings, token: str) -> tuple[Any, str]:
+async def _load_jwks(settings: Settings, *, force_refresh: bool = False) -> list[dict[str, Any]]:
+    """Load signing keys once per TTL and refresh when Supabase rotates them."""
+
     if not settings.supabase_jwt_jwks_url:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="JWT verification configuration is missing",
         )
+    url = str(settings.supabase_jwt_jwks_url)
+    cached = _jwks_cache.get(url)
+    if cached and not force_refresh and cached[0] > monotonic():
+        return cached[1]
     try:
-        header = jwt.get_unverified_header(token)
         async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
-            response = await client.get(str(settings.supabase_jwt_jwks_url))
+            response = await client.get(url)
             response.raise_for_status()
         keys = response.json().get("keys", [])
+        if not isinstance(keys, list) or not keys:
+            raise ValueError("JWKS response did not contain signing keys")
+        normalized_keys = [candidate for candidate in keys if isinstance(candidate, dict)]
+        _jwks_cache[url] = (monotonic() + JWKS_CACHE_TTL_SECONDS, normalized_keys)
+        return normalized_keys
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        logger.warning("jwt_jwks_lookup_failed", extra={"error": str(exc)})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to verify access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
+async def _jwks_key(settings: Settings, token: str) -> tuple[Any, str]:
+    try:
+        header = jwt.get_unverified_header(token)
+        keys = await _load_jwks(settings)
         key = next((candidate for candidate in keys if candidate.get("kid") == header.get("kid")), None)
+        if key is None:
+            # A new Supabase signing key may have rotated while the cached set
+            # is still fresh; retry once before rejecting the access token.
+            keys = await _load_jwks(settings, force_refresh=True)
+            key = next((candidate for candidate in keys if candidate.get("kid") == header.get("kid")), None)
         if key is None and len(keys) == 1:
             key = keys[0]
         if key is None:
             raise ValueError("No matching JWT signing key")
-        return jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key)), str(header.get("alg", "RS256"))
-    except (httpx.HTTPError, ValueError, KeyError, jwt.PyJWTError) as exc:
+        jwk = jwt.PyJWK.from_dict(key)
+        algorithm = str(header.get("alg") or jwk.algorithm_name or "")
+        if jwk.algorithm_name and algorithm != jwk.algorithm_name:
+            raise ValueError("JWT algorithm does not match JWKS key")
+        return jwk.key, algorithm
+    except (ValueError, KeyError, TypeError, jwt.PyJWTError, HTTPException) as exc:
         logger.warning("jwt_jwks_lookup_failed", extra={"error": str(exc)})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -124,12 +158,26 @@ async def get_current_user(
     result = await session.execute(
         text(
             """
-            select id, role::text as role, full_name, email, phone, photo_url, bio,
-                   institution_id, department_id, research_interests, teaching_interests,
-                   expertise, career_goals, open_to_mentorship, open_to_collaboration,
-                   accepting_phd_inquiries, onboarding_completed_at, created_at, updated_at
-            from public.profiles
-            where id = :user_id
+            select p.id, p.role::text as role, p.full_name, p.email, p.phone, p.photo_url, p.bio,
+                   p.institution_id, p.department_id, p.research_interests, p.teaching_interests,
+                   p.expertise, p.career_goals, p.open_to_mentorship, p.open_to_collaboration,
+                   p.accepting_phd_inquiries, p.onboarding_completed_at, p.created_at, p.updated_at,
+                   i.name as institution_name,
+                   d.name as department_name,
+                   fp.employee_code,
+                   fp.designation,
+                   fp.date_joined,
+                   fp.current_academic_year,
+                   fp.orcid_id,
+                   fp.scholar_url,
+                   fp.openalex_author_id,
+                   fp.qualifications,
+                   fp.phd_status
+            from public.profiles p
+            left join public.institutions i on i.id = p.institution_id
+            left join public.departments d on d.id = p.department_id
+            left join public.faculty_profiles fp on fp.profile_id = p.id
+            where p.id = :user_id
             """
         ),
         {"user_id": user_id},

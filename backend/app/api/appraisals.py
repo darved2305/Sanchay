@@ -153,7 +153,9 @@ async def _submission(session: AsyncSession, submission_id: UUID, user: CurrentU
         query += " and s.profile_id = :profile_id"
         params["profile_id"] = user.user_id
     if lock:
-        query += " for update"
+        # Lock only the submission row. PostgreSQL rejects a plain FOR UPDATE
+        # here because the detail query also contains nullable LEFT JOINs.
+        query += " for update of s"
     result = await session.execute(text(query), params)
     row = result.mappings().first()
     if row is None:

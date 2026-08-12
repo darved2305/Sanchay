@@ -29,6 +29,7 @@ import { subscribeToFacultyUpdates } from '../lib/realtime';
 
 const PAGE_SIZE = 25;
 const POLL_INTERVAL_MS = 5000;
+const ADMIN_REALTIME_QUERY_KEYS = [['admin']];
 
 const INITIAL_FILTERS = {
   q: '',
@@ -706,7 +707,8 @@ export default function AdminPanel() {
     if (!realtimeProfileId) return undefined;
     return subscribeToFacultyUpdates({
       profileId: realtimeProfileId,
-      queryKeys: [['admin']],
+      channelName: `admin-updates:${realtimeProfileId}`,
+      queryKeys: ADMIN_REALTIME_QUERY_KEYS,
       onEvent: refreshAll,
     });
   }, [realtimeProfileId, refreshAll]);

@@ -31,7 +31,14 @@ class Database:
             pool_size=settings.database_pool_max_size,
             max_overflow=max(0, settings.database_pool_max_size - settings.database_pool_min_size),
             pool_timeout=settings.database_command_timeout_seconds,
-            connect_args={"command_timeout": settings.database_command_timeout_seconds},
+            # Supabase's transaction pooler (port 6543) can move a transaction
+            # between server connections. Disable asyncpg's connection-local
+            # prepared-statement cache so the same engine works with either
+            # pooler mode.
+            connect_args={
+                "command_timeout": settings.database_command_timeout_seconds,
+                "statement_cache_size": 0,
+            },
         )
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
 

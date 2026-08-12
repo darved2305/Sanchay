@@ -26,18 +26,30 @@ export async function fetchQuery(key, fetcher, { force = false } = {}) {
   const serializedKey = serialize(key);
   const current = cache.get(serializedKey);
   if (!force && current && current.data !== undefined) return current.data;
-  if (inFlight.has(serializedKey)) return inFlight.get(serializedKey);
+  const existing = inFlight.get(serializedKey);
+  if (existing) {
+    if (force) existing.refreshAfterResolve = true;
+    return existing.promise;
+  }
 
+  const requestState = { promise: null, refreshAfterResolve: false };
   const request = Promise.resolve().then(fetcher).then((data) => {
     cache.set(serializedKey, { key: normalizeKey(key), data, updatedAt: Date.now() });
-    inFlight.delete(serializedKey);
+    if (inFlight.get(serializedKey) === requestState) inFlight.delete(serializedKey);
     notify(serializedKey);
+    // If invalidation happened while the request was in flight, the response
+    // may reflect the pre-mutation snapshot. Re-fetch after notifying current
+    // subscribers so their loading state is refreshed from the server.
+    if (requestState.refreshAfterResolve && !inFlight.has(serializedKey)) {
+      fetchQuery(key, fetcher, { force: true }).catch(() => {});
+    }
     return data;
   }).catch((error) => {
-    inFlight.delete(serializedKey);
+    if (inFlight.get(serializedKey) === requestState) inFlight.delete(serializedKey);
     throw error;
   });
-  inFlight.set(serializedKey, request);
+  requestState.promise = request;
+  inFlight.set(serializedKey, requestState);
   return request;
 }
 
@@ -48,6 +60,9 @@ export function invalidateQueries(key) {
       cache.delete(serializedKey);
       notify(serializedKey);
     }
+  });
+  inFlight.forEach((requestState, serializedKey) => {
+    if (keyStartsWith(JSON.parse(serializedKey), prefix)) requestState.refreshAfterResolve = true;
   });
 }
 

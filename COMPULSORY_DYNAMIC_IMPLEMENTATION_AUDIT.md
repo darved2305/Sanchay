@@ -2,7 +2,7 @@
 
 ## 1. Executive Status
 
-The compulsory implementation is present in the repository as a production-shaped Vite + FastAPI + Supabase system. The local source, contract tests, frontend build, unauthenticated API smoke checks, schema/migration files, seed tooling, RLS policies, storage integration, and realtime fallback are implemented.
+The compulsory implementation is present in the repository as a production-shaped Vite + FastAPI + Supabase system. The local source, contract tests, frontend build, unauthenticated API smoke checks, schema/migration files, seed tooling, RLS policies, private storage integration, realtime subscriptions, and polling fallback are implemented.
 
 The hosted Supabase project `fcnmmxxnhrolgaxetnyz` is now reachable through the authenticated Supabase Management API. The migration was applied, the idempotent seed was run twice, and live Auth/RLS/isolation checks passed. Raw Postgres CLI linking remains unavailable from the current network because the pooler TLS route times out and the direct database hostname has no reachable IPv6 route; this does not prevent the hosted Supabase project from serving the application.
 
@@ -10,11 +10,11 @@ The hosted Supabase project `fcnmmxxnhrolgaxetnyz` is now reachable through the 
 | --- | --- |
 | Compulsory feature code paths implemented | 12 / 12 |
 | Dynamic compulsory data paths | 12 |
-| Partially runtime-verified | Evidence API metadata/attach flow, publication provider sync, backend-over-Postgres, and two-browser realtime workflow |
+| Partially runtime-verified | Live publication-provider response still depends on a faculty ORCID and provider availability; the core storage primitive, browser evidence flow, API contracts, and local two-browser appraisal path are verified |
 | Hardcoded compulsory business data in faculty/admin paths | 0 |
 | Broken local checks | 0 |
 | Live Supabase schema/seed/Auth/RLS verification | Passed |
-| Live application deployment verification | Pending Vercel/Railway deployment |
+| Live application deployment verification | Pending Vercel/Railway deployment; local frontend/backend are running against the hosted Supabase project |
 
 ## 2. Feature Matrix
 
@@ -25,12 +25,12 @@ The hosted Supabase project `fcnmmxxnhrolgaxetnyz` is now reachable through the 
 | Academic activity CRUD | Activity record, filters, edit/archive, evidence attach | Owner-scoped CRUD and server query filters | `academic_activities`, participants, indexes | Cache invalidation/polling | Academic-year, permission, API contract coverage; live ownership RLS | Yes | Implemented; live ownership RLS passed |
 | Faculty dashboard | Real counters, recent activity, appraisal state | `/dashboard/faculty` aggregate queries | Activities, cycles, submissions, notifications | Faculty subscription + 5-second fallback | Build and API contracts | Yes | Implemented |
 | Publication discovery | Sync, candidate review, confirm/reject | ORCID + OpenAlex + Crossref connectors and dedupe | Publication records/authors/candidates; confirmed activity | Query invalidation | Dedupe contract test | Yes, provider config optional | Implemented; live provider pending |
-| Evidence management | Upload, attach, list, download, delete | Private signed upload/download URLs and validation | Evidence metadata and activity links | Cache invalidation | MIME/size and storage contracts; live private storage primitive | Yes | Implemented; private Storage upload/signed download passed; API metadata flow pending |
+| Evidence management | Upload, attach, list, download, delete | Private signed upload/download URLs and validation | Evidence metadata and activity links | Cache invalidation | MIME/size and storage contracts; browser upload/attach/reload/download | Yes | Implemented; local browser round-trip passed |
 | Self-appraisal generation | Readiness, draft, submit, feedback, PDF download | Section generation and state transitions | Templates, sections, cycles, submissions/items/reviews | Submission + notification subscriptions | Readiness/state tests | Yes | Implemented |
 | Admin directory/overview | Server search, sort, filters, pagination | Institution-scoped queries and aggregates | Profiles, faculty profiles, cycles, submissions | Admin cache invalidation + polling | Admin authorization contracts; live institutional visibility | Yes | Implemented; live RLS visibility passed |
-| Admin review workflow | Detail, comment, return, approve, reject | Persisted review actions and notifications | Reviews, submissions, notifications | Faculty/admin round-trip wiring | State/authorization contracts | Yes | Implemented; live two-browser pending |
+| Admin review workflow | Detail, comment, return, approve, reject | Persisted review actions and notifications | Reviews, submissions, notifications | Faculty/admin round-trip wiring | State/authorization contracts; local two-browser E2E | Yes | Implemented; local realtime round-trip passed |
 | Notifications | Unread list and mark-read | Owner-scoped notification endpoints | `notifications` | Realtime subscription | Protected-route contract | Yes | Implemented |
-| PDF/report export | Download action | ReportLab PDF from stored submission, Storage upload, signed URL | `generated_documents`, submission path | Query invalidation | PDF code path/build check | Yes | Implemented; live download pending |
+| PDF/report export | Download action | ReportLab PDF from stored submission, Storage upload, signed URL | `generated_documents`, submission path | Query invalidation | Local two-browser E2E opened the generated PDF | Yes | Implemented; live download passed locally |
 | Deployment/observability | Runtime config error states and error boundary | `/health`, `/ready`, request IDs, structured logs | Supabase readiness check | Realtime fallback | Build, smoke, audit | Vercel + Railway + Supabase | Configured; deployment pending |
 
 ## 3. Page Matrix
@@ -110,15 +110,19 @@ The migration also creates required enums, indexes, auth provisioning trigger, R
 | Backend unit/API contract suite | 20 passed, 6 live-database tests skipped because raw Postgres is unreachable from this network |
 | Unauthenticated FastAPI smoke checks | Passed: protected endpoints return 401 |
 | `/health` | Passed: 200 |
-| `/ready` | Correctly returns 503 without configured Supabase/PostgreSQL dependencies |
+| `/ready` | Passed with hosted Supabase/PostgreSQL configuration; correctly returns 503 when required dependencies are absent |
 | Repository P0 hardcode/mock audit | Passed: clean |
 | `git diff --check` | Passed |
 | Live Supabase migration and seed through authenticated Supabase API | Passed; migration applied and seed run twice without duplicates |
 | Live Auth role login/profile provisioning | Passed; faculty and admin roles authenticated; new faculty received one empty profile |
 | Live RLS isolation | Passed; faculty B read of faculty A activity returned 0, unauthorized update had no effect, admin saw 2 profiles/9 activities |
 | Live private Storage upload/signed download | Passed; PDF object uploaded, signed URL returned HTTP 200, object cleaned up |
-| Playwright/new-user/evidence/publication E2E | Not run: no configured live environment |
-| Two-browser realtime appraisal recording | Not run: no configured live environment |
+| Playwright browser smoke suite | Passed for landing/auth/seed faculty/faculty compulsory pages/admin controls; one full run saw a transient 404 and the isolated admin rerun passed |
+| New faculty registration + isolation + activity persistence | Passed against hosted Supabase; temporary QA account and its cascaded records were deleted after the run |
+| Two-browser realtime appraisal workflow | Passed locally against hosted Supabase: submit → admin sees → return/comment → faculty sees → resubmit → approve → faculty sees Approved |
+| PDF report download | Passed locally; browser opened the generated Supabase Storage PDF and rendered the real submission data |
+| Evidence UI round-trip | Passed locally: browser upload → private Storage → metadata finalize → activity attach → reload → signed download |
+| Publication-provider sync | Connector/dedupe contracts pass; live provider response depends on a faculty ORCID and provider availability |
 | Supabase CLI `link`/raw Postgres connection | Blocked by current network: pooler TLS timeout and direct IPv6 no route |
 
 ## 11. Deployment Checklist
@@ -135,7 +139,7 @@ The migration also creates required enums, indexes, auth provisioning trigger, R
 ## 12. Known Issues
 
 - Raw PostgreSQL access from this network is blocked: the Supabase pooler TLS connection times out and the direct project database hostname resolves to unreachable IPv6. Supabase HTTPS APIs remain reachable and were used for live schema, seed, Auth, and RLS verification.
-- No live evidence object was seeded; the seed script currently seeds real database activity records and the appraisal template/cycle. Evidence round-trip remains deployment verification.
-- No Playwright test project was introduced; live E2E and the two-browser realtime workflow remain deployment verification work.
-- PDF generation uses ReportLab, which is backend-safe and stores the result in Supabase Storage; it has not been downloaded from a live bucket in this workspace.
+- No permanent evidence object is seeded; the seed script intentionally seeds real activities and the appraisal template/cycle. A temporary browser fixture completed the evidence round-trip and was deleted afterward.
+- A Playwright QA project is present under `qa/`; the local seed faculty/admin click-through and the full two-browser appraisal workflow have passed. The admin smoke test saw one transient 404 in a full run and passed on isolated rerun; the failing response was not reproducible.
+- PDF generation uses ReportLab, which is backend-safe and stores the result in Supabase Storage; the local browser flow generated and opened the signed PDF successfully.
 - The API intentionally returns `/ready` as unavailable until all required external dependencies are configured; this is an explicit deployment signal, not an in-memory fallback.

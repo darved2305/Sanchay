@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.auth import CurrentUser, get_current_user, require_admin, require_faculty
 from ..core.db import get_db
 from .schemas import ProfilePatch
-from .utils import institution_id_or_403, rows_to_dicts
+from .utils import institution_id_or_403
 
 router = APIRouter()
 
@@ -22,6 +22,7 @@ async def auth_me(user: CurrentUser = Depends(get_current_user)) -> dict[str, An
     return {
         "role": user.role,
         "profile_id": user.user_id,
+        "profile": {"id": user.user_id, "role": user.role, **user.profile},
         "onboarding_completed": user.profile.get("onboarding_completed_at") is not None,
         "institution_id": user.institution_id,
         "department_id": user.department_id,
@@ -192,91 +193,78 @@ async def faculty_dashboard(
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     institution_id = institution_id_or_403(user)
-    counts = await session.execute(
+    dashboard = await session.execute(
         text(
             """
-            select category::text as category, count(*)::int as count
-            from public.academic_activities
-            where owner_id = :owner_id and status = 'confirmed'
-            group by category order by category
+            with category_counts as (
+              select category::text as category, count(*)::int as count
+              from public.academic_activities
+              where owner_id = :owner_id and status = 'confirmed'
+              group by category
+            ),
+            pending_evidence as (
+              select category::text as category, count(*)::int as count,
+                     min(id::text)::uuid as id, min(title) as title
+              from public.academic_activities
+              where owner_id = :owner_id and status = 'confirmed' and evidence_status = 'pending'
+              group by category
+            ),
+            recent_activities as (
+              select id, category::text as category, title, academic_year,
+                     status::text as status, evidence_status::text as evidence_status,
+                     start_date, created_at
+              from public.academic_activities
+              where owner_id = :owner_id and status <> 'archived'
+              order by coalesce(start_date, created_at::date) desc, created_at desc
+              limit 8
+            ),
+            current_appraisal as (
+              select c.id as cycle_id, c.name, c.academic_year, c.due_at,
+                     coalesce(s.status::text, 'not_started') as status,
+                     coalesce(s.readiness, 0)::numeric as readiness, s.id as submission_id
+              from public.appraisal_cycles c
+              left join public.appraisal_submissions s
+                on s.cycle_id = c.id and s.profile_id = :profile_id
+              where c.institution_id = :institution_id and c.status = 'open'
+              order by c.due_at nulls last, c.created_at desc
+              limit 1
+            ),
+            inbox as (
+              select kind, count(*)::int as count, min(title) as title, min(body) as body,
+                     min(link_path) as link_path, min(created_at) as created_at
+              from public.notifications
+              where profile_id = :profile_id and read_at is null
+              group by kind
+              order by min(created_at) desc
+              limit 10
+            ),
+            deadlines as (
+              select id, name, academic_year, due_at
+              from public.appraisal_cycles
+              where institution_id = :institution_id and due_at is not null and due_at >= now()
+              order by due_at asc
+              limit 5
+            )
+            select
+              coalesce((select jsonb_object_agg(category, count) from category_counts), '{}'::jsonb) as category_counts,
+              coalesce((select jsonb_agg(to_jsonb(pending_evidence) order by category) from pending_evidence), '[]'::jsonb) as pending_evidence,
+              coalesce((select jsonb_agg(to_jsonb(recent_activities) order by coalesce(start_date, created_at::date) desc, created_at desc) from recent_activities), '[]'::jsonb) as recent_activities,
+              (select to_jsonb(current_appraisal) from current_appraisal) as appraisal,
+              coalesce((select jsonb_agg(to_jsonb(inbox) order by created_at desc) from inbox), '[]'::jsonb) as inbox,
+              coalesce((select jsonb_agg(to_jsonb(deadlines) order by due_at asc) from deadlines), '[]'::jsonb) as deadlines
             """
         ),
-        {"owner_id": user.user_id},
+        {"owner_id": user.user_id, "profile_id": user.user_id, "institution_id": institution_id},
     )
-    pending_evidence_result = await session.execute(
-        text(
-            """
-            select category::text as category, count(*)::int as count,
-                   min(id) as id, min(title) as title
-            from public.academic_activities
-            where owner_id = :owner_id and status = 'confirmed' and evidence_status = 'pending'
-            group by category order by category
-            """
-        ),
-        {"owner_id": user.user_id},
-    )
-    recent = await session.execute(
-        text(
-            """
-            select id, category::text as category, title, academic_year, status::text as status,
-                   evidence_status::text as evidence_status, start_date, created_at
-            from public.academic_activities
-            where owner_id = :owner_id and status <> 'archived'
-            order by coalesce(start_date, created_at::date) desc, created_at desc
-            limit 8
-            """
-        ),
-        {"owner_id": user.user_id},
-    )
-    appraisal = await session.execute(
-        text(
-            """
-            select c.id as cycle_id, c.name, c.academic_year, c.due_at,
-                   coalesce(s.status::text, 'not_started') as status,
-                   coalesce(s.readiness, 0)::numeric as readiness, s.id as submission_id
-            from public.appraisal_cycles c
-            left join public.appraisal_submissions s
-              on s.cycle_id = c.id and s.profile_id = :profile_id
-            where c.institution_id = :institution_id and c.status = 'open'
-            order by c.due_at nulls last, c.created_at desc
-            limit 1
-            """
-        ),
-        {"profile_id": user.user_id, "institution_id": institution_id},
-    )
-    cycle = appraisal.mappings().first()
-    inbox_rows = await session.execute(
-        text(
-            """
-            select kind, count(*)::int as count, min(title) as title, min(body) as body,
-                   min(link_path) as link_path
-            from public.notifications
-            where profile_id = :profile_id and read_at is null
-            group by kind order by min(created_at) desc
-            limit 10
-            """
-        ),
-        {"profile_id": user.user_id},
-    )
-    deadlines = await session.execute(
-        text(
-            """
-            select id, name, academic_year, due_at
-            from public.appraisal_cycles
-            where institution_id = :institution_id and due_at is not null and due_at >= now()
-            order by due_at asc limit 5
-            """
-        ),
-        {"institution_id": institution_id},
-    )
-    category_counts = {str(row["category"]): int(row["count"]) for row in counts.mappings().all()}
-    pending_evidence = rows_to_dicts(pending_evidence_result.mappings().all())
+    dashboard_row = dashboard.mappings().one()
+    category_counts = dict(dashboard_row["category_counts"] or {})
+    pending_evidence = dashboard_row["pending_evidence"] or []
     return {
         "full_name": user.profile.get("full_name"),
-        "appraisal": dict(cycle) if cycle else None,
-        "inbox": rows_to_dicts(inbox_rows.mappings().all()),
-        "deadlines": rows_to_dicts(deadlines.mappings().all()),
-        "recent_activities": rows_to_dicts(recent.mappings().all()),
+        "appraisal": dashboard_row["appraisal"],
+        "inbox": dashboard_row["inbox"] or [],
+        "deadlines": dashboard_row["deadlines"] or [],
+        "recent_activities": dashboard_row["recent_activities"] or [],
         "category_counts": category_counts,
         "activity_count": sum(category_counts.values()),
         "teaching_activity_count": category_counts.get("teaching", 0),

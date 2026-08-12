@@ -40,7 +40,7 @@ export default function DashboardApp() {
       const session = await getSession();
       if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
       const authMe = payloadData(await api.authMe());
-      const nextProfile = payloadData(await api.profile());
+      const nextProfile = payloadData(authMe.profile) || payloadData(await api.profile());
       const resolved = { ...nextProfile, role: authMe.role, profile_id: authMe.profile_id };
       setProfile(resolved);
       setCurrentView(authMe.role === 'admin' || authMe.role === 'dept_admin' || authMe.role === 'institution_admin' || authMe.role === 'reviewer' ? 'admin' : 'dashboard');
