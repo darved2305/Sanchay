@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { SiGmail, SiGooglecalendar, SiGoogledrive, SiOrcid } from 'react-icons/si';
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell } from 'recharts';
-import { recoveredActivities, monthlyOverviewData, sourceCoverageData } from '../data/mockData';
+import { recoveredActivities, monthlyOverviewData, sourceCoverageData } from '../data/reconstructData';
 
 export default function ReconstructMyYear({ setCurrentView }) {
   const [activities, setActivities] = useState(recoveredActivities);

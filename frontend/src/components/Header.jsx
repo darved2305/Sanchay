@@ -1,192 +1,79 @@
 import React, { useState } from 'react';
-import { Search, Bell, Plus, UserCheck, Shield, ChevronDown, Check, LogOut, PanelLeft, PanelLeftClose } from 'lucide-react';
-import { currentFaculty, adminUser } from '../data/mockData';
+import { Bell, ChevronDown, LogOut, PanelLeft, PanelLeftClose, Plus, Search } from 'lucide-react';
+import { api, listItems } from '../lib/api';
+import { useApiQuery, invalidateQueries } from '../lib/queryCache';
 
-export default function Header({ currentRole, setCurrentRole, currentView, setCurrentView, onOpenAddModal, isSidebarOpen, setIsSidebarOpen, onSignOut }) {
+function displayName(profile) {
+  return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member';
+}
+
+function initials(name) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'F';
+}
+
+function profileRole(profile) {
+  return ['admin', 'dept_admin', 'institution_admin', 'reviewer'].includes(profile?.role) ? 'Administrator' : 'Faculty';
+}
+
+export default function Header({ profile, currentRole, setCurrentView, onOpenAddModal, onSearch, isSidebarOpen, setIsSidebarOpen, onSignOut }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const name = displayName(profile);
+  const notifications = useApiQuery(['notifications', { unread: true }], () => api.notifications({ unread: true }));
+  const notificationItems = listItems(notifications.data);
+  const unreadCount = notifications.data?.unread_count ?? notifications.data?.count ?? notificationItems.length;
+  const avatar = profile?.avatar_url || profile?.photo_url || profile?.faculty_profile?.photo_url;
 
-  const activeUser = currentRole === 'Admin' ? adminUser : currentFaculty;
+  const goHome = () => {
+    setCurrentView(currentRole === 'Admin' ? 'admin' : 'dashboard');
+    setShowProfileMenu(false);
+  };
+
+  const markNotificationsRead = async () => {
+    if (!unreadCount) return;
+    try {
+      await api.markNotificationsRead({ all: true });
+      invalidateQueries(['notifications']);
+    } catch {
+      // The list remains visible; the next realtime/poll refresh will retry.
+    }
+  };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-4 transition-all">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        
-        {/* Left Section: Sidebar Toggle & Brand / Logo */}
+    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-4 py-4 backdrop-blur-md transition-all sm:px-6">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          
-          {/* Sidebar Toggle Button */}
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-            className="p-2.5 text-slate-700 hover:text-[#FD6F3B] hover:bg-orange-50/80 rounded-2xl transition-all border border-slate-200/80 active:scale-95 flex items-center justify-center"
-          >
-            {isSidebarOpen ? <PanelLeftClose className="w-5 h-5 text-[#FD6F3B]" /> : <PanelLeft className="w-5 h-5 text-slate-700" />}
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} title={isSidebarOpen ? 'Collapse Sidebar' : 'Expand Sidebar'} className="flex items-center justify-center rounded-2xl border border-slate-200/80 p-2.5 text-slate-700 transition-all hover:bg-orange-50/80 hover:text-[#FD6F3B]">
+            {isSidebarOpen ? <PanelLeftClose className="h-5 w-5 text-[#FD6F3B]" /> : <PanelLeft className="h-5 w-5" />}
           </button>
-
-          {/* Brand / Logo */}
-          <div 
-            onClick={() => setCurrentView(currentRole === 'Admin' ? 'admin' : 'dashboard')}
-            className="flex items-center gap-3 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
-              <div className="w-5 h-5 border-2 border-white/90 border-t-transparent rounded-md rotate-45 transform"></div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 bg-clip-text text-transparent">
-                  Sanchaya
-                </span>
-              </div>
-              <p className="text-base text-slate-500 font-semibold tracking-tight">Your Impact. Clearly.</p>
-            </div>
-          </div>
-
+          <button onClick={goHome} className="group flex items-center gap-3 text-left">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 shadow-md shadow-orange-500/20 transition-transform group-hover:scale-105"><div className="h-5 w-5 rotate-45 rounded-md border-2 border-white/90 border-t-transparent" /></div>
+            <div><span className="bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">Sanchaya</span><p className="text-base font-semibold tracking-tight text-slate-500">Your Impact. Clearly.</p></div>
+          </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
-          <div className="relative w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search activities, forms, publications, evidence..."
-              className="w-full pl-11 pr-4 py-2.5 bg-slate-100/70 border border-slate-200 rounded-full text-base text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20 focus:border-[#FD6F3B] transition-all"
-            />
-          </div>
-        </div>
+        <form className="hidden max-w-md flex-1 items-center md:flex md:mx-4" onSubmit={(event) => { event.preventDefault(); onSearch?.(searchQuery.trim()); }}>
+          <div className="relative w-full"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search activities, publications, evidence..." className="w-full rounded-full border border-slate-200 bg-slate-100/70 py-2.5 pl-11 pr-4 text-base font-medium text-slate-900 placeholder-slate-400 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" aria-label="Search activities" /></div>
+        </form>
 
-        {/* Controls & User Profile */}
-        <div className="flex items-center gap-3">
-          
-          {/* Quick Add Activity Button */}
-          {currentRole !== 'Admin' && (
-            <button
-              onClick={onOpenAddModal}
-              className="hidden sm:flex items-center gap-2 px-4 py-2 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-xl text-base font-bold shadow-sm transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Activity</span>
-            </button>
-          )}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {currentRole !== 'Admin' && <button onClick={() => onOpenAddModal?.()} className="hidden items-center gap-2 rounded-xl bg-[#FD6F3B] px-4 py-2 text-base font-bold text-white shadow-sm transition-all hover:bg-[#E05320] sm:flex"><Plus className="h-4 w-4" />Add Activity</button>}
 
-          {/* Role Switcher Pill */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
-            <button
-              onClick={() => {
-                setCurrentRole('Faculty');
-                setCurrentView('dashboard');
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-base font-bold transition-all ${
-                currentRole === 'Faculty'
-                  ? 'bg-white text-[#FD6F3B] shadow-xs border border-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Faculty</span>
-            </button>
-            <button
-              onClick={() => {
-                setCurrentRole('Admin');
-                setCurrentView('admin');
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-base font-bold transition-all ${
-                currentRole === 'Admin'
-                  ? 'bg-[#FD6F3B] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Shield className="w-4 h-4" />
-              <span>Admin Panel</span>
-            </button>
-          </div>
-
-          {/* Notifications Dropdown */}
           <div className="relative">
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-all"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#FD6F3B] rounded-full ring-2 ring-white"></span>
-            </button>
-
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-50 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Notifications</h4>
-                  <span className="text-base text-[#FD6F3B] font-bold">2 New</span>
-                </div>
-                <div className="divide-y divide-slate-100 text-base">
-                  <div className="py-3">
-                    <p className="font-bold text-slate-900">Self-Appraisal Deadline Approaching</p>
-                    <p className="text-slate-500 mt-0.5">Submit your 2024-25 appraisal by May 31.</p>
-                  </div>
-                  <div className="py-3">
-                    <p className="font-bold text-slate-900">Scopus Publication Synced</p>
-                    <p className="text-slate-500 mt-0.5">1 paper detected via ORCID & Google Scholar.</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <button onClick={() => { setShowNotifications((value) => !value); markNotificationsRead(); }} aria-label="Notifications" className="relative rounded-full p-2.5 text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900"><Bell className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-1.5 top-1.5 flex min-h-2.5 min-w-2.5 items-center justify-center rounded-full bg-[#FD6F3B] px-1 text-[9px] font-extrabold text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}</button>
+            {showNotifications && <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"><div className="flex items-center justify-between border-b border-slate-100 pb-2.5"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">Notifications</h4><button onClick={markNotificationsRead} className="text-xs font-bold text-[#FD6F3B]">Mark read</button></div><div className="divide-y divide-slate-100 text-sm">{notifications.loading && <p className="py-4 text-slate-500">Loading notifications…</p>}{notifications.error && <p className="py-4 text-red-600">Unable to load notifications.</p>}{!notifications.loading && !notifications.error && notificationItems.length === 0 && <p className="py-4 text-slate-500">You have no new notifications.</p>}{notificationItems.slice(0, 5).map((item) => <div key={item.id} className="py-3"><p className="font-bold text-slate-900">{item.title || item.kind || 'Notification'}</p><p className="mt-0.5 text-slate-500">{item.body || item.message || 'You have an update.'}</p></div>)}</div></div>}
           </div>
 
-          {/* User Profile Card */}
           <div className="relative">
-            <button 
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-3 p-1 rounded-2xl hover:bg-slate-100 transition-all text-left"
-            >
-              <img 
-                src={activeUser.avatar} 
-                alt={activeUser.name} 
-                className="w-10 h-10 rounded-full object-cover border-2 border-orange-200 shadow-xs"
-              />
-              <div className="hidden lg:block">
-                <p className="text-base font-bold text-slate-900 leading-tight">{activeUser.name}</p>
-                <p className="text-base text-slate-500 leading-tight">{activeUser.title}</p>
-              </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 hidden lg:block" />
+            <button onClick={() => setShowProfileMenu((value) => !value)} className="flex items-center gap-3 rounded-2xl p-1 text-left transition-all hover:bg-slate-100">
+              {avatar ? <img src={avatar} alt={name} className="h-10 w-10 rounded-full border-2 border-orange-200 object-cover shadow-xs" /> : <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-orange-200 bg-orange-100 font-extrabold text-[#E05320]">{initials(name)}</span>}
+              <div className="hidden lg:block"><p className="text-base font-bold leading-tight text-slate-900">{name}</p><p className="text-sm leading-tight text-slate-500">{profile?.designation || profile?.title || profileRole(profile)}</p></div>
+              <ChevronDown className="hidden h-4 w-4 text-slate-400 lg:block" />
             </button>
-
-            {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-3.5 z-50">
-                <div className="px-3.5 py-2.5 bg-[#FFF4F0] rounded-xl mb-2">
-                  <p className="text-base font-bold text-orange-950">{activeUser.name}</p>
-                  <p className="text-base text-[#E05320] font-medium">{activeUser.email}</p>
-                  <span className="inline-block mt-1.5 text-xs font-bold px-2.5 py-0.5 bg-orange-100 text-orange-900 rounded-full">
-                    {activeUser.role} • {activeUser.employeeCode}
-                  </span>
-                </div>
-                
-                <div className="space-y-1 text-base font-bold text-slate-700">
-                  <button 
-                    onClick={() => {
-                      setCurrentView(currentRole === 'Admin' ? 'admin' : 'dashboard');
-                      setShowProfileMenu(false);
-                    }}
-                    className="w-full text-left px-3.5 py-2.5 hover:bg-slate-100 rounded-xl transition-colors"
-                  >
-                    Dashboard Home
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setShowProfileMenu(false);
-                      onSignOut?.();
-                    }}
-                    className="w-full text-left px-3.5 py-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              </div>
-            )}
+            {showProfileMenu && <div className="absolute right-0 z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xl"><div className="mb-2 rounded-xl bg-[#FFF4F0] px-3.5 py-2.5"><p className="text-base font-bold text-orange-950">{name}</p><p className="break-all text-sm font-medium text-[#E05320]">{profile?.email || 'Signed-in account'}</p><span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-bold text-orange-900">{profileRole(profile)}</span></div><div className="space-y-1 text-base font-bold text-slate-700"><button onClick={goHome} className="w-full rounded-xl px-3.5 py-2.5 text-left transition-colors hover:bg-slate-100">Dashboard Home</button>{currentRole !== 'Admin' && <button onClick={() => { setCurrentView('profile'); setShowProfileMenu(false); }} className="w-full rounded-xl px-3.5 py-2.5 text-left transition-colors hover:bg-slate-100">My Profile</button>}<button onClick={() => { setShowProfileMenu(false); onSignOut?.(); }} className="flex w-full items-center gap-2 rounded-xl px-3.5 py-2.5 text-left text-red-600 transition-colors hover:bg-red-50"><LogOut className="h-4 w-4" />Sign Out</button></div></div>}
           </div>
-
         </div>
-
       </div>
     </header>
   );

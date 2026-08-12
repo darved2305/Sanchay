@@ -1,570 +1,290 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, Building2, TrendingUp,
-  Heart, CheckCircle2, XCircle, Cloud, Users, FileCheck, User, Building, Award, Loader2, X, AlertCircle
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Cloud,
+  Eye,
+  EyeOff,
+  FileCheck,
+  Loader2,
+  Lock,
+  Mail,
+  ShieldCheck,
+  User,
+  Users,
 } from 'lucide-react';
-import { SiOrcid } from 'react-icons/si';
+import { api } from '../lib/api';
+import { getRuntimeConfig, runtimeConfigMessage } from '../lib/config';
+import {
+  sendPasswordReset,
+  signInWithPassword,
+  signUpFaculty,
+} from '../lib/supabase';
 
-export default function LoginPage({ onLogin }) {
-  const [activeTab, setActiveTab] = useState('signin'); // 'signin' | 'register'
-  
-  // Sign In state
-  const [signInEmail, setSignInEmail] = useState('ananya.sharma@westfield.edu');
-  const [signInPassword, setSignInPassword] = useState('Ananya@2025');
+function FieldError({ children }) {
+  return children ? <p className="mt-1 text-sm font-semibold text-red-600">{children}</p> : null;
+}
+
+function ErrorBanner({ children }) {
+  return children ? (
+    <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{children}</span>
+    </div>
+  ) : null;
+}
+
+export default function LoginPage({ initialMode = 'signin', onLogin }) {
+  const [activeTab, setActiveTab] = useState(initialMode === 'register' ? 'register' : 'signin');
+  const [signInEmail, setSignInEmail] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
   const [showSignInPassword, setShowSignInPassword] = useState(false);
-
-  // Register state
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regEmpCode, setRegEmpCode] = useState('');
-  const [regDept, setRegDept] = useState('Computer Science & Engineering');
-  const [regRole, setRegRole] = useState('Faculty');
+  const [regInstitution, setRegInstitution] = useState('');
+  const [regDept, setRegDept] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(true);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [notice, setNotice] = useState('');
+  const [resetSent, setResetSent] = useState(false);
 
-  // SSO Modal State
-  const [ssoProvider, setSsoProvider] = useState(null); // 'google' | 'microsoft' | 'orcid' | null
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [selectedSsoAccount, setSelectedSsoAccount] = useState(null);
+  const config = useMemo(getRuntimeConfig, []);
+  const passwordRules = [
+    { id: 'length', label: 'At least 10 characters', met: regPassword.length >= 10 },
+    { id: 'uppercase', label: 'One uppercase letter', met: /[A-Z]/.test(regPassword) },
+    { id: 'lowercase', label: 'One lowercase letter', met: /[a-z]/.test(regPassword) },
+    { id: 'number', label: 'One number', met: /[0-9]/.test(regPassword) },
+    { id: 'special', label: 'One special character', met: /[^A-Za-z0-9]/.test(regPassword) },
+  ];
 
-  // Password Rules Verification Helper
-  const getPasswordRules = (pass) => {
-    return [
-      { id: 'length', label: 'At least 8 characters long', met: pass.length >= 8 },
-      { id: 'uppercase', label: 'At least one uppercase letter (A-Z)', met: /[A-Z]/.test(pass) },
-      { id: 'lowercase', label: 'At least one lowercase letter (a-z)', met: /[a-z]/.test(pass) },
-      { id: 'number', label: 'At least one number (0-9)', met: /[0-9]/.test(pass) },
-      { id: 'special', label: 'At least one special character (!@#$%^&*)', met: /[!@#$%^&*(),.?":{}|<>]/.test(pass) },
-    ];
+  const clearMessages = () => {
+    setError('');
+    setNotice('');
+    setFieldErrors({});
   };
 
-  const regPasswordRules = getPasswordRules(regPassword);
-  const isRegPasswordValid = regPasswordRules.every(r => r.met);
-  const metRegRulesCount = regPasswordRules.filter(r => r.met).length;
+  const switchTab = (tab) => {
+    clearMessages();
+    setActiveTab(tab);
+  };
 
-  const handleSignInSubmit = (e) => {
-    e.preventDefault();
-    if (signInEmail.includes('admin') || signInEmail.includes('dean')) {
-      onLogin('Admin');
-    } else {
-      onLogin('Faculty');
+  const finishAuthentication = async () => {
+    const authMe = await api.authMe();
+    onLogin?.(authMe);
+  };
+
+  const handleSignIn = async (event) => {
+    event.preventDefault();
+    clearMessages();
+    if (!signInEmail.trim() || !signInPassword) {
+      setError('Enter your institutional email and password.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await signInWithPassword(signInEmail.trim(), signInPassword);
+      await finishAuthentication();
+    } catch (authError) {
+      setError(runtimeConfigMessage(authError));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleRegisterSubmit = (e) => {
-    e.preventDefault();
-    if (!regFullName || !regEmail || !isRegPasswordValid) return;
-    onLogin(regRole);
+  const handleRegister = async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const nextFieldErrors = {};
+    if (!regFullName.trim()) nextFieldErrors.full_name = 'Enter your full name.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) nextFieldErrors.email = 'Enter a valid institutional email.';
+    if (!regInstitution.trim()) nextFieldErrors.institution = 'Enter your institution.';
+    if (!regDept) nextFieldErrors.department = 'Choose your department.';
+    if (passwordRules.some((rule) => !rule.met)) nextFieldErrors.password = 'Use all of the password requirements below.';
+    if (!agreeTerms) nextFieldErrors.terms = 'Accept the terms to create your faculty account.';
+    if (Object.keys(nextFieldErrors).length) {
+      setFieldErrors(nextFieldErrors);
+      setError('Please correct the highlighted fields.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await signUpFaculty({
+        email: regEmail.trim(),
+        password: regPassword,
+        fullName: regFullName.trim(),
+        institution: regInstitution.trim(),
+        department: regDept,
+        employeeCode: regEmpCode.trim(),
+      });
+      if (!result.session) {
+        setNotice('Account created. Check your email to confirm the account, then sign in.');
+      } else {
+        await api.updateProfile({
+          full_name: regFullName.trim(),
+          institution_name: regInstitution.trim(),
+          department_name: regDept,
+          employee_code: regEmpCode.trim() || null,
+        });
+        await finishAuthentication();
+      }
+    } catch (authError) {
+      setError(runtimeConfigMessage(authError));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleSsoSelectAccount = (accountEmail, role) => {
-    setSelectedSsoAccount(accountEmail);
-    setIsAuthenticating(true);
-    setTimeout(() => {
-      setIsAuthenticating(false);
-      setSsoProvider(null);
-      onLogin(role);
-    }, 1200);
+  const handleReset = async () => {
+    clearMessages();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signInEmail.trim())) {
+      setFieldErrors({ email: 'Enter your email first.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await sendPasswordReset(signInEmail.trim());
+      setResetSent(true);
+      setNotice('If that account exists, a password reset link is on its way.');
+    } catch (resetError) {
+      setError(runtimeConfigMessage(resetError));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F7] flex flex-col justify-between p-4 sm:p-6 lg:p-8 font-sans">
-      <div className="max-w-6xl mx-auto w-full bg-white rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-200/80 overflow-hidden flex flex-col lg:flex-row my-auto">
-        
-        {/* Left Column - Auth Form */}
-        <div className="w-full lg:w-1/2 p-8 sm:p-12 flex flex-col justify-between">
+    <div className="min-h-screen bg-[#FAF9F7] p-4 font-sans sm:p-6 lg:p-8">
+      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/60 lg:min-h-0 lg:flex-row">
+        <div className="flex w-full flex-col justify-between p-7 sm:p-10 lg:w-1/2 lg:p-12">
           <div>
-            {/* Logo */}
-            <div className="flex items-center gap-3.5 mb-8">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/20">
-                <div className="w-5 h-5 border-2 border-white/90 border-t-transparent rounded-md rotate-45 transform"></div>
+            <div className="mb-8 flex items-center gap-3.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 shadow-md shadow-orange-500/20">
+                <div className="h-5 w-5 rotate-45 rounded-md border-2 border-white/90 border-t-transparent" />
               </div>
               <div>
-                <span className="font-extrabold text-2xl tracking-tight text-slate-900">Sanchaya</span>
-                <p className="text-base text-slate-500 font-semibold">Your Impact. Clearly.</p>
+                <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sanchaya</span>
+                <p className="text-base font-semibold text-slate-500">Your Impact. Clearly.</p>
               </div>
             </div>
 
-            {/* Quick Demo Switcher Banner for SIH Reviewers */}
-            <div className="mb-6 p-3.5 bg-[#FFF4F0] rounded-2xl border border-orange-200/70 flex items-center justify-between text-base">
-              <span className="font-bold text-orange-950 text-base">Quick Demo Login:</span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSignInEmail('ananya.sharma@westfield.edu');
-                    onLogin('Faculty');
-                  }}
-                  className="px-3 py-1.5 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-xl font-bold transition-all"
-                >
-                  Faculty
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSignInEmail('dean.academics@westfield.edu');
-                    onLogin('Admin');
-                  }}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-all"
-                >
-                  Admin
-                </button>
-              </div>
-            </div>
-
-            {/* Segmented Control Tabs */}
-            <div className="bg-slate-100 p-1 rounded-2xl flex mb-6">
-              <button
-                type="button"
-                onClick={() => setActiveTab('signin')}
-                className={`flex-1 py-3 text-base font-bold rounded-xl transition-all ${
-                  activeTab === 'signin'
-                    ? 'bg-orange-100 text-orange-950 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('register')}
-                className={`flex-1 py-3 text-base font-bold rounded-xl transition-all ${
-                  activeTab === 'register'
-                    ? 'bg-orange-100 text-orange-950 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            {/* Dynamic Form Content based on Active Tab */}
-            {activeTab === 'signin' ? (
-              /* SIGN IN FORM */
-              <div>
-                <div className="mb-6">
-                  <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Welcome back!
-                  </h1>
-                  <div className="w-20 h-1.5 bg-[#FD6F3B] rounded-full mt-1.5 mb-2.5"></div>
-                  <p className="text-base text-slate-600 font-medium">
-                    Sign in to continue your self-appraisal and showcase your impact.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSignInSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-base font-bold text-slate-700 mb-1.5">
-                      Institutional Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4.5 h-4.5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="email"
-                        value={signInEmail}
-                        onChange={(e) => setSignInEmail(e.target.value)}
-                        required
-                        placeholder="you@yourinstitution.edu"
-                        className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-base text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20 focus:border-[#FD6F3B] transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-base font-bold text-slate-700 mb-1.5">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4.5 h-4.5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type={showSignInPassword ? "text" : "password"}
-                        value={signInPassword}
-                        onChange={(e) => setSignInPassword(e.target.value)}
-                        required
-                        placeholder="Enter your password"
-                        className="w-full pl-11 pr-11 py-3 bg-white border border-slate-200 rounded-2xl text-base text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20 focus:border-[#FD6F3B] transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowSignInPassword(!showSignInPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#FD6F3B] transition-colors p-1"
-                        title={showSignInPassword ? "Hide password" : "Show password"}
-                      >
-                        {showSignInPassword ? <EyeOff className="w-4 h-4 text-[#FD6F3B]" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-base">
-                    <label className="flex items-center gap-2 text-slate-600 cursor-pointer font-medium">
-                      <input type="checkbox" defaultChecked className="rounded text-[#FD6F3B] focus:ring-[#FD6F3B]" />
-                      <span>Remember me</span>
-                    </label>
-                    <a href="#forgot" onClick={(e) => e.preventDefault()} className="text-[#FD6F3B] hover:text-[#E05320] font-bold">
-                      Forgot Password?
-                    </a>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3.5 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-2xl text-base font-bold shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
-                  >
-                    <span>Sign In</span>
-                    <ArrowRight className="w-4.5 h-4.5" />
-                  </button>
-                </form>
-
-                {/* SSO Divider & Buttons */}
-                <div className="relative my-6 text-center">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200"></div>
-                  </div>
-                  <span className="relative bg-white px-3.5 text-base text-slate-400 font-semibold">
-                    or continue with
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setSsoProvider('google')}
-                    className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-orange-50/50 hover:border-orange-200 rounded-2xl text-base font-bold text-slate-700 flex items-center justify-center gap-3 transition-all group"
-                  >
-                    <svg className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                    </svg>
-                    <span>Continue with Google</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSsoProvider('microsoft')}
-                    className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-orange-50/50 hover:border-orange-200 rounded-2xl text-base font-bold text-slate-700 flex items-center justify-center gap-3 transition-all group"
-                  >
-                    <svg className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" viewBox="0 0 23 23">
-                      <path fill="#f35325" d="M1 1h10v10H1z"/>
-                      <path fill="#81bc06" d="M12 1h10v10H1z"/>
-                      <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                      <path fill="#ffba08" d="M12 12h10v10H1z"/>
-                    </svg>
-                    <span>Continue with Microsoft</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSsoProvider('orcid')}
-                    className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-orange-50/50 hover:border-orange-200 rounded-2xl text-base font-bold text-slate-700 flex items-center justify-center gap-3 transition-all group"
-                  >
-                    <SiOrcid className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" style={{ color: '#A6CE39' }} />
-                    <span>Continue with ORCID</span>
-                  </button>
-                </div>
-              </div>
-
-            ) : (
-
-              /* DISTINCT CREATE ACCOUNT / REGISTER FORM WITH REAL-TIME PASSWORD VALIDATOR */
-              <div>
-                <div className="mb-6">
-                  <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Join Sanchaya
-                  </h1>
-                  <div className="w-20 h-1.5 bg-[#FD6F3B] rounded-full mt-1.5 mb-2.5"></div>
-                  <p className="text-base text-slate-600 font-medium">
-                    Create your academic profile to automate appraisals and evidence collection.
-                  </p>
-                </div>
-
-                <form onSubmit={handleRegisterSubmit} className="space-y-4 text-base">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Full Name (With Title)
-                    </label>
-                    <div className="relative">
-                      <User className="w-4.5 h-4.5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        required
-                        value={regFullName}
-                        onChange={(e) => setRegFullName(e.target.value)}
-                        placeholder="Dr. Ananya Sharma"
-                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Institutional Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4.5 h-4.5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="email"
-                        required
-                        value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
-                        placeholder="ananya.sharma@westfield.edu"
-                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Employee / Faculty Code
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={regEmpCode}
-                        onChange={(e) => setRegEmpCode(e.target.value)}
-                        placeholder="EMP-2024-8849"
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Institutional Role
-                      </label>
-                      <select
-                        value={regRole}
-                        onChange={(e) => setRegRole(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"
-                      >
-                        <option value="Faculty">Faculty Member</option>
-                        <option value="Admin">HOD / Admin</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Department
-                    </label>
-                    <select
-                      value={regDept}
-                      onChange={(e) => setRegDept(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"
-                    >
-                      <option>Computer Science & Engineering</option>
-                      <option>Electrical & Electronics Engineering</option>
-                      <option>Mechanical Engineering</option>
-                      <option>Biotechnology & Life Sciences</option>
-                      <option>Physics & Nanotechnology</option>
-                    </select>
-                  </div>
-
-                  {/* Create Password Input */}
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="font-bold text-slate-700">
-                        Create Password
-                      </label>
-                      {regPassword && (
-                        <span className={`text-base font-extrabold inline-flex items-center gap-1 ${
-                          metRegRulesCount === 5 ? 'text-emerald-600' :
-                          metRegRulesCount >= 3 ? 'text-amber-600' : 'text-red-500'
-                        }`}>
-                          {metRegRulesCount === 5 ? (
-                            <><CheckCircle2 className="w-3.5 h-3.5" /> Strong Password</>
-                          ) : `${metRegRulesCount}/5 Rules Met`}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="relative">
-                      <Lock className="w-4.5 h-4.5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type={showRegPassword ? "text" : "password"}
-                        required
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        placeholder="e.g. Ananya@2025"
-                        className={`w-full pl-11 pr-11 py-2.5 bg-white border rounded-2xl text-slate-900 font-medium focus:outline-none focus:ring-2 transition-all ${
-                          regPassword.length > 0
-                            ? isRegPasswordValid
-                              ? 'border-emerald-500 focus:ring-emerald-500/20'
-                              : 'border-red-300 focus:ring-red-500/20'
-                            : 'border-slate-200 focus:ring-[#FD6F3B]/20'
-                        }`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowRegPassword(!showRegPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#FD6F3B] p-1"
-                        title={showRegPassword ? "Hide password" : "Show password"}
-                      >
-                        {showRegPassword ? <EyeOff className="w-4 h-4 text-[#FD6F3B]" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    {/* Strength Progress Meter */}
-                    {regPassword.length > 0 && (
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2">
-                        <div 
-                          className={`h-full transition-all duration-300 rounded-full ${
-                            metRegRulesCount === 5 ? 'bg-emerald-500 w-full' :
-                            metRegRulesCount >= 3 ? 'bg-amber-500 w-3/5' :
-                            'bg-red-500 w-1/5'
-                          }`}
-                        ></div>
-                      </div>
-                    )}
-
-                    {/* Real-time Color-Coded Password Rules Checklist */}
-                    <div className="mt-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-base">
-                      <span className="block font-bold text-slate-600 text-xs uppercase tracking-wider mb-1">
-                        Password Requirements
-                      </span>
-                      {regPasswordRules.map((rule) => (
-                        <div 
-                          key={rule.id}
-                          className={`flex items-center gap-2 font-medium transition-all ${
-                            rule.met
-                              ? 'text-emerald-700 font-bold'
-                              : 'text-red-500'
-                          }`}
-                        >
-                          {rule.met ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                          )}
-                          <span>{rule.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="pt-1">
-                    <label className="flex items-start gap-2 text-slate-600 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={agreeTerms} 
-                        onChange={(e) => setAgreeTerms(e.target.checked)} 
-                        className="mt-0.5 rounded text-[#FD6F3B] focus:ring-[#FD6F3B]" 
-                      />
-                      <span className="text-base leading-relaxed font-medium">
-                        I agree to institutional self-appraisal terms and data confidentiality policy.
-                      </span>
-                    </label>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!agreeTerms || !isRegPasswordValid}
-                    className="w-full py-3.5 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-2xl text-base font-bold shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-                  >
-                    <span>Create Account & Start Appraisal</span>
-                    <ArrowRight className="w-4.5 h-4.5" />
-                  </button>
-                </form>
-              </div>
-
+            {!config.isConfigured && (
+              <ErrorBanner>{config.missing.length ? `Configuration required: ${config.missing.join(', ')}.` : 'Configuration required.'}</ErrorBanner>
             )}
 
-            <div className="mt-6 text-center text-base text-slate-500 font-medium">
-              {activeTab === 'signin' ? (
-                <>
-                  New to Sanchaya?{' '}
-                  <button onClick={() => setActiveTab('register')} className="text-[#FD6F3B] font-bold hover:underline">
-                    Create an account
-                  </button>
-                </>
-              ) : (
-                <>
-                  Already have an institutional account?{' '}
-                  <button onClick={() => setActiveTab('signin')} className="text-[#FD6F3B] font-bold hover:underline">
-                    Sign in
-                  </button>
-                </>
-              )}
+            <div className="mb-6 flex rounded-2xl bg-slate-100 p-1">
+              {['signin', 'register'].map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => switchTab(tab)}
+                  className={`flex-1 rounded-xl py-3 text-base font-bold transition-all ${activeTab === tab ? 'bg-orange-100 text-orange-950 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  {tab === 'signin' ? 'Sign In' : 'Create Account'}
+                </button>
+              ))}
             </div>
 
-          </div>
+            <ErrorBanner>{error}</ErrorBanner>
+            {notice && <div className="mb-4 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{notice}</div>}
 
-          <div className="mt-8 pt-4 border-t border-slate-100 text-base text-center text-slate-400 font-medium">
-            By continuing, you agree to our <a href="#terms" onClick={(e)=>e.preventDefault()} className="underline hover:text-slate-600">Terms of Service</a> and <a href="#privacy" onClick={(e)=>e.preventDefault()} className="underline hover:text-slate-600">Privacy Policy</a>.
+            {activeTab === 'signin' ? (
+              <div>
+                <div className="mb-6">
+                  <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Welcome back!</h1>
+                  <div className="mb-2.5 mt-1.5 h-1.5 w-20 rounded-full bg-[#FD6F3B]" />
+                  <p className="text-base font-medium text-slate-600">Sign in to continue your self-appraisal and showcase your impact.</p>
+                </div>
+
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div>
+                    <label htmlFor="signin-email" className="mb-1.5 block text-base font-bold text-slate-700">Institutional Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                      <input id="signin-email" type="email" value={signInEmail} onChange={(event) => setSignInEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-base font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required />
+                    </div>
+                    <FieldError>{fieldErrors.email}</FieldError>
+                  </div>
+                  <div>
+                    <label htmlFor="signin-password" className="mb-1.5 block text-base font-bold text-slate-700">Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                      <input id="signin-password" type={showSignInPassword ? 'text' : 'password'} value={signInPassword} onChange={(event) => setSignInPassword(event.target.value)} placeholder="Enter your password" className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-11 text-base font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required />
+                      <button type="button" onClick={() => setShowSignInPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#FD6F3B]" aria-label={showSignInPassword ? 'Hide password' : 'Show password'}>
+                        {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end text-base">
+                    <button type="button" onClick={handleReset} disabled={busy || resetSent} className="font-bold text-[#FD6F3B] hover:text-[#E05320] disabled:opacity-50">Forgot Password?</button>
+                  </div>
+                  <button type="submit" disabled={busy || !config.isConfigured} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FD6F3B] py-3.5 text-base font-bold text-white shadow-md shadow-orange-500/25 transition-all hover:bg-[#E05320] disabled:cursor-not-allowed disabled:opacity-50">
+                    {busy ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <><span>Sign In</span><ArrowRight className="h-4.5 w-4.5" /></>}
+                  </button>
+                </form>
+
+                <div className="relative my-6 text-center">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+                  <span className="relative bg-white px-3.5 text-base font-semibold text-slate-400">or continue with</span>
+                </div>
+                <button type="button" disabled className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-400 disabled:cursor-not-allowed disabled:opacity-70">
+                  <span className="text-lg font-extrabold text-slate-400">G</span><span>Google sign-in · Coming soon</span>
+                </button>
+                <p className="mt-3 text-center text-xs font-medium text-slate-400">Email and password are available today.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-6">
+                  <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Join Sanchaya</h1>
+                  <div className="mb-2.5 mt-1.5 h-1.5 w-20 rounded-full bg-[#FD6F3B]" />
+                  <p className="text-base font-medium text-slate-600">Create your faculty profile to automate appraisals and evidence collection.</p>
+                </div>
+                <form onSubmit={handleRegister} className="space-y-4 text-base">
+                  <div>
+                    <label htmlFor="reg-name" className="mb-1 block font-bold text-slate-700">Full Name</label>
+                    <div className="relative"><User className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-name" value={regFullName} onChange={(event) => setRegFullName(event.target.value)} placeholder="Your full name" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-4 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div>
+                    <FieldError>{fieldErrors.full_name}</FieldError>
+                  </div>
+                  <div>
+                    <label htmlFor="reg-email" className="mb-1 block font-bold text-slate-700">Institutional Email</label>
+                    <div className="relative"><Mail className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-email" type="email" value={regEmail} onChange={(event) => setRegEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-4 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div>
+                    <FieldError>{fieldErrors.email}</FieldError>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div><label htmlFor="reg-institution" className="mb-1 block font-bold text-slate-700">Institution</label><input id="reg-institution" value={regInstitution} onChange={(event) => setRegInstitution(event.target.value)} placeholder="Your university" className="w-full rounded-2xl border border-slate-200 px-3.5 py-2.5 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><FieldError>{fieldErrors.institution}</FieldError></div>
+                    <div><label htmlFor="reg-code" className="mb-1 block font-bold text-slate-700">Employee Code <span className="font-medium text-slate-400">(optional)</span></label><input id="reg-code" value={regEmpCode} onChange={(event) => setRegEmpCode(event.target.value)} placeholder="EMP-2026-001" className="w-full rounded-2xl border border-slate-200 px-3.5 py-2.5 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div>
+                  </div>
+                  <div><label htmlFor="reg-dept" className="mb-1 block font-bold text-slate-700">Department</label><input id="reg-dept" value={regDept} onChange={(event) => setRegDept(event.target.value)} placeholder="Your department" className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 font-bold focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><FieldError>{fieldErrors.department}</FieldError></div>
+                  <div><label htmlFor="reg-password" className="mb-1 block font-bold text-slate-700">Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-password" type={showRegPassword ? 'text' : 'password'} value={regPassword} onChange={(event) => setRegPassword(event.target.value)} placeholder="Create a secure password" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-11 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><button type="button" onClick={() => setShowRegPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400" aria-label={showRegPassword ? 'Hide password' : 'Show password'}>{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div><div className="mt-2 grid grid-cols-2 gap-1 text-xs font-semibold text-slate-500 sm:grid-cols-3">{passwordRules.map((rule) => <span key={rule.id} className={rule.met ? 'text-emerald-700' : ''}>{rule.met ? '✓' : '○'} {rule.label}</span>)}</div><FieldError>{fieldErrors.password}</FieldError></div>
+                  <label className="flex items-start gap-2 text-sm font-medium text-slate-600"><input type="checkbox" checked={agreeTerms} onChange={(event) => setAgreeTerms(event.target.checked)} className="mt-1 rounded text-[#FD6F3B] focus:ring-[#FD6F3B]" /><span>I agree to institutional self-appraisal terms and data confidentiality policy.</span></label>
+                  <FieldError>{fieldErrors.terms}</FieldError>
+                  <button type="submit" disabled={busy || !config.isConfigured} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FD6F3B] py-3.5 text-base font-bold text-white shadow-md shadow-orange-500/25 transition-all hover:bg-[#E05320] disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <><span>Create Faculty Account</span><ArrowRight className="h-4.5 w-4.5" /></>}</button>
+                </form>
+              </div>
+            )}
           </div>
+          <p className="mt-8 border-t border-slate-100 pt-4 text-center text-xs font-medium text-slate-400">By continuing, you agree to our Terms of Service and Privacy Policy.</p>
         </div>
 
-        {/* Right Column - Hero Graphic & Floating Feature Cards */}
-        <div className="w-full lg:w-1/2 bg-gradient-to-br from-orange-100/70 via-amber-50/50 to-orange-200/60 p-8 sm:p-12 flex flex-col justify-between relative overflow-hidden">
-          
-          {/* Subtle Blob Background */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-200/40 via-transparent to-transparent pointer-events-none"></div>
-
-          {/* Quote Annotation Top Right */}
-          <div className="relative z-10 text-right">
-            <span className="text-orange-400 font-serif text-4xl font-bold">“</span>
-            <h2 className="text-xl font-extrabold text-orange-950 tracking-tight leading-snug">
-              Everything you need.<br />All in one place.
-            </h2>
-            <span className="text-orange-400 font-serif text-4xl font-bold">”</span>
-          </div>
-
-          {/* Professor Hero Image & Floating Cards Container */}
+        <div className="relative flex w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-orange-100/70 via-amber-50/50 to-orange-200/60 p-8 sm:p-12 lg:w-1/2">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-200/40 via-transparent to-transparent" />
+          <div className="relative z-10 text-right"><span className="font-serif text-4xl font-bold text-orange-400">“</span><h2 className="text-xl font-extrabold leading-snug tracking-tight text-orange-950">Everything you need.<br />All in one place.</h2><span className="font-serif text-4xl font-bold text-orange-400">”</span></div>
           <div className="relative z-10 my-6 flex items-center justify-center">
-            
-            {/* Orange backdrop organic shape */}
-            <div className="w-72 h-80 bg-orange-200/80 rounded-full blur-xl absolute -z-10 animate-pulse-subtle"></div>
-            
-            {/* Professor Photo */}
-            <div className="relative w-64 h-80 rounded-3xl overflow-hidden border-4 border-white shadow-2xl">
-              <img 
-                src="/dr_ananya_sharma.png" 
-                alt="Dr. Ananya Sharma" 
-                className="w-full h-full object-cover object-top"
-              />
-            </div>
-
-            {/* Floating Card 1: Top Left */}
-            <div className="absolute top-4 -left-4 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 max-w-[170px] animate-float">
-              <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center text-[#FD6F3B] mb-2">
-                <Cloud className="w-4.5 h-4.5" />
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 leading-tight">Auto-save evidence</h4>
-              <p className="text-sm text-slate-500 mt-0.5 leading-snug">Never lose your progress.</p>
-            </div>
-
-            {/* Floating Card 2: Middle Right */}
-            <div className="absolute top-1/2 -right-4 -translate-y-1/2 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 max-w-[170px]">
-              <div className="w-8 h-8 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-2">
-                <Users className="w-4.5 h-4.5" />
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 leading-tight">Role-based access</h4>
-              <p className="text-sm text-slate-500 mt-0.5 leading-snug">Secure. Relevant. For everyone.</p>
-            </div>
-
-            {/* Floating Card 3: Bottom Left */}
-            <div className="absolute bottom-4 -left-2 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 max-w-[170px]">
-              <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-2">
-                <FileCheck className="w-4.5 h-4.5" />
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 leading-tight">Appraisal ready</h4>
-              <p className="text-sm text-slate-500 mt-0.5 leading-snug">Organized. Complete. Always ready.</p>
-            </div>
-
+            <div className="absolute h-72 w-64 rounded-full bg-orange-200/80 blur-xl" />
+            <div className="relative h-80 w-64 overflow-hidden rounded-3xl border-4 border-white shadow-2xl"><img src="/faculty-portrait.png" alt="Faculty member" className="h-full w-full object-cover object-top" /></div>
+            <div className="absolute -left-4 top-4 max-w-[170px] rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-orange-100 text-[#FD6F3B]"><Cloud className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Auto-save evidence</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Keep every contribution verifiable.</p></div>
+            <div className="absolute -right-4 top-1/2 max-w-[170px] -translate-y-1/2 rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Users className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Role-based access</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Secure and relevant for everyone.</p></div>
+            <div className="absolute -bottom-2 -left-2 max-w-[170px] rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-600"><FileCheck className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Appraisal ready</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Organized from your real record.</p></div>
           </div>
-
-          {/* Bottom Annotation Doodle */}
-          <div className="relative z-10 text-left">
-            <p className="text-base font-serif italic font-bold text-orange-900">
-              Built for faculty. <span className="underline decoration-orange-400">Backed by trust.</span>
-            </p>
-          </div>
-
+          <div className="relative z-10 flex items-center gap-2 text-base font-serif italic font-bold text-orange-900"><ShieldCheck className="h-4 w-4" />Built for faculty. <span className="underline decoration-orange-400">Backed by trust.</span></div>
         </div>
-
       </div>
-
     </div>
   );
 }

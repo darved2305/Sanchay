@@ -38,3 +38,9 @@ Thumbs.db
 .claude/settings.local.json
 
 *.local
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/

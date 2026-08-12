@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Search, ChevronDown, ArrowRight, TrendingUp, Sparkles,
+  Search, ChevronDown, ArrowRight, Sparkles,
   RefreshCw, Layers, FileCheck, BarChart3, ShieldCheck, GraduationCap
 } from 'lucide-react';
 import { SiGoogle, SiOrcid } from 'react-icons/si';
 
-const navLinks = ['Features', 'For Faculty', 'For Admins', 'Resources', 'About Us'];
+const navLinks = [
+  { label: 'Features', href: '#features' },
+  { label: 'For Faculty', href: '/login' },
+  { label: 'For Admins', href: '/login' },
+  { label: 'Resources', href: '#features' },
+  { label: 'About Us', href: '#about' },
+];
 const dropdownLinks = new Set(['Features', 'Resources']);
 
 const suggestionPills = ['Reconstruct My Year', 'View My Timeline', 'Log an Activity', 'Check Impact Score'];
@@ -50,10 +56,10 @@ const features = [
 ];
 
 const stats = [
-  { value: '10K+', label: 'Faculty Users' },
-  { value: '250+', label: 'Institutions' },
-  { value: '1.8M+', label: 'Activities Logged' },
-  { value: '98%', label: 'Satisfaction Rate' },
+  { value: '—', label: 'Faculty records' },
+  { value: '—', label: 'Institution records' },
+  { value: '—', label: 'Activities logged' },
+  { value: '—', label: 'Verified after sign-in' },
 ];
 
 export default function LandingPage() {
@@ -85,14 +91,14 @@ export default function LandingPage() {
 
           <nav className="hidden lg:flex items-center gap-1">
             {navLinks.map((item) => (
-              <button
-                key={item}
-                type="button"
+              <Link
+                key={item.label}
+                to={item.href}
                 className="px-3.5 py-2 rounded-xl text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center gap-1"
               >
-                <span>{item}</span>
-                {dropdownLinks.has(item) && <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
+                <span>{item.label}</span>
+                {dropdownLinks.has(item.label) && <ChevronDown className="w-3.5 h-3.5" />}
+              </Link>
             ))}
           </nav>
 
@@ -114,7 +120,7 @@ export default function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <section id="faculty" className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 shadow-2xs mb-6">
@@ -174,15 +180,15 @@ export default function LandingPage() {
 
           <div className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-full overflow-hidden border-4 border-white shadow-2xl">
             <img
-              src="/dr_ananya_sharma.png"
-              alt="Dr. Ananya Sharma"
+              src="/faculty-portrait.png"
+              alt="Faculty member"
               className="w-full h-full object-cover object-top"
             />
           </div>
 
           {/* Floating Card: Self-Appraisal Status */}
           <div className="absolute top-4 -left-4 sm:-left-8 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 animate-float">
-            <p className="text-sm font-bold text-slate-800">Self-Appraisal 2024-25</p>
+            <p className="text-sm font-bold text-slate-800">Annual self-appraisal</p>
             <span className="inline-flex items-center gap-1.5 mt-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               In Progress
@@ -192,21 +198,21 @@ export default function LandingPage() {
           {/* Floating Card: Activities Logged */}
           <div className="absolute top-1/3 -right-4 sm:-right-8 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Activities Logged</p>
-            <p className="text-2xl font-extrabold text-slate-900">128</p>
+            <p className="text-2xl font-extrabold text-slate-900">—</p>
           </div>
 
           {/* Floating Card: Impact Score */}
           <div className="absolute bottom-4 -left-2 sm:-left-6 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 animate-float">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Impact Score</p>
             <p className="text-2xl font-extrabold text-[#FD6F3B] inline-flex items-center gap-1">
-              92% <TrendingUp className="w-4 h-4" />
+              —
             </p>
           </div>
         </div>
       </section>
 
       {/* Feature Cards */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {features.map((feature) => {
             const Icon = feature.icon;
@@ -232,13 +238,13 @@ export default function LandingPage() {
       </section>
 
       {/* Trust / Stats Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
+      <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8">
 
           <div className="relative shrink-0 flex items-center justify-center w-40 h-40">
             <div className="w-36 h-36 bg-orange-200/70 rounded-full absolute -z-10"></div>
             <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
-              <img src="/dr_ananya_sharma.png" alt="Dr. Ananya Sharma" className="w-full h-full object-cover object-top" />
+              <img src="/faculty-portrait.png" alt="Faculty member" className="w-full h-full object-cover object-top" />
             </div>
           </div>
 

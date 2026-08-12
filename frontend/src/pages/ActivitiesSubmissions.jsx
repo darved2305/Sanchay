@@ -1,371 +1,105 @@
-import React, { useState } from 'react';
-import { 
-  BookOpen, FlaskConical, Heart, Users, Award, ShieldCheck,
-  Plus, CheckCircle2, Clock, MoreHorizontal, Download, ChevronRight, ChevronLeft, TrendingUp
-} from 'lucide-react';
-import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { activityCategories, initialSubmissions } from '../data/mockData';
-import { generateAppraisalPDF } from '../utils/pdfGenerator';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Archive, CheckCircle2, Clock3, Edit3, FileCheck2, FlaskConical, Loader2, Plus, RefreshCw, Search, ShieldCheck, Upload, XCircle } from 'lucide-react';
+import { api, listItems, payloadData } from '../lib/api';
+import { ACTIVITY_CATEGORIES, categoryLabel } from '../lib/constants';
+import { invalidateQueries, useApiQuery } from '../lib/queryCache';
+import { runtimeConfigMessage } from '../lib/config';
 
-export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView }) {
-  const [selectedFilter, setSelectedFilter] = useState('All');
-  const [submissionsList, setSubmissionsList] = useState(initialSubmissions);
-  const [currentPage, setCurrentPage] = useState(1);
+const FILTERS = [
+  { id: '', label: 'All' },
+  { id: 'teaching', label: 'Teaching' },
+  { id: 'research', label: 'Research' },
+  { id: 'publication', label: 'Publication' },
+  { id: 'mentorship', label: 'Mentorship' },
+  { id: 'workshop_fdp', label: 'Workshop / FDP' },
+  { id: 'committee', label: 'Committee' },
+];
 
-  // Icon mapping
-  const getCategoryIcon = (iconName) => {
-    switch (iconName) {
-      case 'BookOpen': return BookOpen;
-      case 'FlaskConical': return FlaskConical;
-      case 'Heart': return Heart;
-      case 'Users': return Users;
-      case 'Award': return Award;
-      case 'ShieldCheck': return ShieldCheck;
-      default: return BookOpen;
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function flattenCandidates(payload) {
+  if (Array.isArray(payload?.candidates)) return payload.candidates;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (payload?.buckets && typeof payload.buckets === 'object') return Object.values(payload.buckets).flatMap((items) => Array.isArray(items) ? items : []);
+  return listItems(payload);
+}
+
+function statusClass(status) {
+  if (status === 'confirmed' || status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'archived' || status === 'rejected') return 'border-slate-200 bg-slate-100 text-slate-600';
+  return 'border-amber-200 bg-amber-50 text-amber-700';
+}
+
+export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView, initialQuery = '' }) {
+  const [category, setCategory] = useState('');
+  const [query, setQuery] = useState('');
+  const [academicYear, setAcademicYear] = useState('');
+  const [evidenceStatus, setEvidenceStatus] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionBusy, setActionBusy] = useState('');
+  const queryKey = useMemo(() => ['activities', { category, q: query, academic_year: academicYear, evidence_status: evidenceStatus }], [academicYear, category, evidenceStatus, query]);
+  useEffect(() => { setQuery(initialQuery); }, [initialQuery]);
+  const activities = useApiQuery(queryKey, () => api.activities.list({ category, q: query, academic_year: academicYear, evidence_status: evidenceStatus, limit: 50 }));
+  const candidates = useApiQuery(['publications', 'candidates'], () => api.publications.candidates('pending'));
+  const items = listItems(activities.data);
+  const candidateItems = flattenCandidates(candidates.data);
+  const categoryCounts = useMemo(() => items.reduce((counts, item) => ({ ...counts, [item.category]: (counts[item.category] || 0) + 1 }), {}), [items]);
+  const hasAnyData = items.length > 0 || candidateItems.length > 0;
+
+  const mutate = async (key, action) => {
+    setActionBusy(key);
+    setActionError('');
+    try {
+      await action();
+      invalidateQueries(['activities']);
+      invalidateQueries(['dashboard', 'faculty']);
+      invalidateQueries(['publications', 'candidates']);
+    } catch (error) {
+      setActionError(runtimeConfigMessage(error));
+    } finally {
+      setActionBusy('');
     }
   };
 
-  const filteredSubmissions = submissionsList.filter(item => {
-    if (selectedFilter === 'All') return true;
-    return item.category.toLowerCase() === selectedFilter.toLowerCase();
+  const archive = (item) => mutate(`archive-${item.id}`, () => api.activities.archive(item.id));
+  const confirmCandidate = (candidate) => mutate(`confirm-${candidate.id}`, () => api.publications.confirm(candidate.id));
+  const rejectCandidate = (candidate) => mutate(`reject-${candidate.id}`, () => api.publications.reject(candidate.id));
+  const syncPublications = () => mutate('sync-publications', async () => {
+    const result = payloadData(await api.publications.sync());
+    if (result?.job_id) setActionError('Publication sync started. Candidates will appear here when the source sync completes.');
   });
 
-  // Category donut data
-  const categoryDonutData = activityCategories.map(cat => ({
-    name: cat.title.split(' ')[0],
-    value: cat.percentage,
-    color: cat.id === 'teaching' ? '#FD6F3B' : 
-           cat.id === 'research' ? '#10B981' : 
-           cat.id === 'service' ? '#F97316' : 
-           cat.id === 'mentorship' ? '#F59E0B' : 
-           cat.id === 'workshops' ? '#0EA5E9' : '#14B8A6'
-  }));
+  const openAdd = (activity = null) => {
+    onOpenAddModal?.(activity);
+  };
 
   return (
     <div className="space-y-6 pb-12">
-      
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-base text-slate-400 font-medium">
-        <span className="hover:text-slate-600 cursor-pointer" onClick={() => setCurrentView('dashboard')}>Dashboard</span>
-        <span>/</span>
-        <span className="text-[#FD6F3B] font-semibold">Activities & Submissions</span>
-      </div>
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center"><div><div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-400"><button onClick={() => setCurrentView('dashboard')} className="hover:text-slate-600">Dashboard</button><span>/</span><span className="font-semibold text-[#FD6F3B]">Activities &amp; Record</span></div><h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Activities &amp; Submissions</h1><p className="mt-2 text-base text-slate-500">Browse, add and manage your academic record from the live faculty API.</p></div><button onClick={() => openAdd()} className="flex items-center justify-center gap-2 rounded-2xl bg-[#FD6F3B] px-5 py-3 text-base font-bold text-white shadow-md shadow-orange-500/25 transition-all hover:bg-[#E05320]"><Plus className="h-4 w-4" />Add Activity</button></div>
 
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            Activities & Submissions
-          </h1>
-          <p className="text-base text-slate-500 mt-2">
-            Browse, add, and manage your academic and professional activities across all categories.
-          </p>
-        </div>
-      </div>
+      {actionError && <div role="alert" className="flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"><span className="flex items-center gap-2"><XCircle className="h-4 w-4" />{actionError}</span><button onClick={() => setActionError('')} aria-label="Dismiss error"><XCircle className="h-4 w-4" /></button></div>}
 
-      {/* Main 2-Column Layout (Left Main Content + Right Sidebar) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column (Categories & Submissions Table) */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {['All', 'Teaching', 'Research', 'Service', 'Mentorship', 'Workshops', 'Committees'].map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setSelectedFilter(filter)}
-                className={`px-4 py-1.5 rounded-full text-base font-bold transition-all shrink-0 ${
-                  selectedFilter === filter
-                    ? 'bg-[#FD6F3B] text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs"><div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, organization or notes" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div><input value={academicYear} onChange={(event) => setAcademicYear(event.target.value)} placeholder="Academic year" className="w-36 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /><select value={evidenceStatus} onChange={(event) => setEvidenceStatus(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20"><option value="">All evidence</option><option value="attached">Evidence attached</option><option value="pending">Evidence pending</option><option value="none_needed">No evidence needed</option></select><button onClick={() => activities.refetch()} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Refresh activities"><RefreshCw className={`h-4 w-4 ${activities.loading ? 'animate-spin' : ''}`} /></button></div>
 
-          {/* Section: Browse Activities */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-slate-800">Browse Activities</h2>
-              <button className="text-base font-semibold text-[#FD6F3B] hover:text-[#E05320] flex items-center gap-1">
-                <span>View all categories</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-base text-slate-500 mb-5">
-              Explore and add new activities to your record.
-            </p>
+      <div className="flex gap-2 overflow-x-auto pb-1">{FILTERS.map((filter) => <button key={filter.id || 'all'} onClick={() => setCategory(filter.id)} className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-bold transition-all ${category === filter.id ? 'bg-[#FD6F3B] text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>{filter.label}</button>)}</div>
 
-            {/* 6 Category Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {activityCategories.map((cat) => {
-                const IconComponent = getCategoryIcon(cat.iconName);
-                return (
-                  <div key={cat.id} className="p-4 bg-slate-50/60 rounded-2xl border border-slate-100 flex flex-col justify-between hover:shadow-xs transition-all">
-                    <div>
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${cat.color}`}>
-                        <IconComponent className="w-5 h-5" />
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-900">{cat.title}</h3>
-                      <p className="text-base text-slate-500 mt-1 leading-snug min-h-[48px]">
-                        {cat.description}
-                      </p>
-                      <span className="inline-block mt-3 text-base font-bold text-slate-600">
-                        {cat.count} activities
-                      </span>
-                    </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">{ACTIVITY_CATEGORIES.slice(0, 7).map((item) => <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs"><p className="truncate text-xs font-bold uppercase tracking-wide text-slate-400">{item.label}</p><p className="mt-1 text-2xl font-extrabold text-slate-900">{categoryCounts[item.id] ?? 0}</p><p className="text-xs font-medium text-slate-500">loaded records</p></div>)}</div>
 
-                    <button
-                      onClick={onOpenAddModal}
-                      className={`mt-4 w-full py-2 px-3 rounded-xl text-base font-bold transition-all flex items-center justify-center gap-1 ${cat.btnBg}`}
-                    >
-                      <span>Add Activity</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Section: Recent Submissions Table */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-slate-800">Recent Submissions</h2>
-              <button className="text-base font-semibold text-[#FD6F3B] hover:text-[#E05320] flex items-center gap-1">
-                <span>View all submissions</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-base text-slate-500 mb-4">
-              Your most recently added or updated activities.
-            </p>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-base border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200/80 text-slate-400 font-bold uppercase text-xs tracking-wider">
-                    <th className="py-3 px-3">Activity</th>
-                    <th className="py-3 px-3">Category</th>
-                    <th className="py-3 px-3">Date Added</th>
-                    <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredSubmissions.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-3">
-                        <p className="font-bold text-slate-800 text-lg">{sub.activity}</p>
-                        <p className="text-base text-slate-400 mt-0.5">{sub.detail}</p>
-                      </td>
-                      <td className="py-3.5 px-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                          sub.categoryKey === 'teaching' ? 'bg-emerald-100 text-emerald-800' :
-                          sub.categoryKey === 'research' ? 'bg-blue-100 text-blue-800' :
-                          sub.categoryKey === 'mentorship' ? 'bg-orange-100 text-orange-900' :
-                          sub.categoryKey === 'workshops' ? 'bg-amber-100 text-amber-800' :
-                          'bg-teal-100 text-teal-800'
-                        }`}>
-                          {sub.category}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3 text-slate-500 font-medium">
-                        {sub.dateAdded}
-                      </td>
-                      <td className="py-3.5 px-3">
-                        {sub.status === 'Approved' ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Approved</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                            <Clock className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Pending</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-3 text-right">
-                        <button className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Footer */}
-            <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-100 text-base text-slate-500">
-              <span>Showing 1 to {filteredSubmissions.length} of 12 results</span>
-              <div className="flex items-center gap-1">
-                <button className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-50">
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button className="w-7 h-7 rounded-lg bg-[#FD6F3B] text-white font-bold flex items-center justify-center">
-                  1
-                </button>
-                <button className="w-7 h-7 rounded-lg hover:bg-slate-100 font-bold flex items-center justify-center">
-                  2
-                </button>
-                <button className="w-7 h-7 rounded-lg hover:bg-slate-100 font-bold flex items-center justify-center">
-                  3
-                </button>
-                <button className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-          </div>
-
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="space-y-6 xl:col-span-2">
+          <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xs"><div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-800">Your academic record</h2><p className="mt-1 text-sm text-slate-500">Only records returned by the backend appear here.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{items.length} loaded</span></div>{activities.loading && <div className="space-y-3 p-6">{[1, 2, 3].map((row) => <div key={row} className="h-16 animate-pulse rounded-2xl bg-slate-100" />)}</div>}{activities.error && <div className="p-6 text-sm font-semibold text-red-700">{runtimeConfigMessage(activities.error)} <button onClick={() => activities.refetch()} className="ml-2 underline">Retry</button></div>}{!activities.loading && !activities.error && items.length === 0 && <div className="p-10 text-center"><FileCheck2 className="mx-auto h-10 w-10 text-slate-300" /><h3 className="mt-3 text-lg font-bold text-slate-800">No activities match these filters</h3><p className="mt-1 text-sm text-slate-500">Add your first activity or adjust the search filters.</p><button onClick={() => openAdd()} className="mt-4 rounded-xl bg-[#FD6F3B] px-4 py-2 text-sm font-bold text-white hover:bg-[#E05320]">Add Activity</button></div>}{items.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-400"><th className="px-6 py-3">Activity</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Date</th><th className="px-3 py-3">Evidence</th><th className="px-6 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{items.map((item) => <tr key={item.id} className="hover:bg-slate-50/70"><td className="px-6 py-4"><p className="font-bold text-slate-900">{item.title || item.activity || 'Untitled activity'}</p><p className="mt-0.5 max-w-[320px] truncate text-xs text-slate-500">{item.organization || item.description || 'No additional details'}</p><span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass(item.status)}`}>{item.status || 'pending'}</span></td><td className="px-3 py-4"><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-[#E05320]">{categoryLabel(item.category)}</span></td><td className="whitespace-nowrap px-3 py-4 font-medium text-slate-500">{formatDate(item.start_date || item.date)}</td><td className="px-3 py-4">{item.evidence_status === 'attached' || item.evidence?.length > 0 ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Attached</span> : item.evidence_status === 'none_needed' ? <span className="text-xs font-semibold text-slate-400">Not needed</span> : <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700"><Clock3 className="h-4 w-4" />Pending</span>}</td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-1"><button onClick={() => openAdd(item)} className="rounded-lg p-2 text-slate-400 hover:bg-orange-50 hover:text-[#FD6F3B]" aria-label={`Edit ${item.title || 'activity'}`}><Edit3 className="h-4 w-4" /></button><button onClick={() => archive(item)} disabled={item.status === 'archived' || actionBusy === `archive-${item.id}`} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40" aria-label={`Archive ${item.title || 'activity'}`}>{actionBusy === `archive-${item.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}</button></div></td></tr>)}</tbody></table></div>}</section>
         </div>
 
-        {/* Right Column (Quick Summary, Top Categories Donut, Stay on Track, Export Data, Banner) */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Primary Action Button */}
-          <button
-            onClick={onOpenAddModal}
-            className="w-full py-3 bg-gradient-to-r from-[#FD6F3B] to-orange-600 hover:from-[#E05320] hover:to-orange-700 text-white rounded-2xl text-base font-bold shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Activity</span>
-          </button>
-
-          {/* Quick Summary Card */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Quick Summary</h3>
-              <select className="text-base font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 outline-none">
-                <option>2024-25 Academic Year</option>
-                <option>2023-24 Academic Year</option>
-              </select>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <span className="text-base text-slate-400 font-semibold block">Total Activities</span>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-3xl font-extrabold text-slate-900">128</span>
-                  {/* Mini Sparkline SVG */}
-                  <svg className="w-20 h-6 text-[#FD6F3B]" viewBox="0 0 100 30" fill="none">
-                    <path d="M0 25 L 20 20 L 40 22 L 60 10 L 80 15 L 100 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
-                <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100">
-                  <span className="text-base text-emerald-700 font-bold block">Approved</span>
-                  <span className="text-xl font-extrabold text-emerald-800">98</span>
-                </div>
-                <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-100">
-                  <span className="text-base text-amber-700 font-bold block">Pending</span>
-                  <span className="text-xl font-extrabold text-amber-800">18</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-[#FFF4F0] rounded-2xl border border-orange-100 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-base text-orange-950 font-bold block">Impact Score</span>
-                  <span className="text-xl font-extrabold text-[#FD6F3B] inline-flex items-center gap-1">92% <TrendingUp className="w-4 h-4" /></span>
-                </div>
-                <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full shrink-0">
-                  Excellent
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Top Categories Donut Chart */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">Top Categories</h3>
-            
-            <div className="flex items-center justify-between">
-              <div className="w-28 h-28 relative shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RePieChart>
-                    <Pie
-                      data={categoryDonutData}
-                      innerRadius={30}
-                      outerRadius={45}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {categoryDonutData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </RePieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="space-y-1.5 text-base font-semibold text-slate-600 flex-1 pl-4">
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#FD6F3B]"></span>Teaching</span> <span>34%</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Research</span> <span>26%</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500"></span>Service</span> <span>18%</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500"></span>Mentorship</span> <span>12%</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-500"></span>Workshops</span> <span>6%</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500"></span>Committees</span> <span>4%</span></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stay on Track Card */}
-          <div className="p-6 bg-[#FFF4F0] rounded-3xl border border-orange-200/70 space-y-3">
-            <h4 className="text-lg font-bold text-orange-950">Stay on Track</h4>
-            <p className="text-base text-orange-900 leading-snug">
-              Keep your activities updated to maintain an accurate impact profile.
-            </p>
-            <button 
-              onClick={() => setCurrentView('activities')}
-              className="text-base font-bold text-[#FD6F3B] hover:text-[#E05320] flex items-center gap-1"
-            >
-              <span>View My Timeline</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Export Your Data Card */}
-          <div className="p-6 bg-orange-50/50 rounded-3xl border border-orange-200/60 space-y-3">
-            <h4 className="text-lg font-bold text-orange-950">Export Your Data</h4>
-            <p className="text-base text-orange-900 leading-snug">
-              Download your activities and reports anytime.
-            </p>
-            <button
-              onClick={() => generateAppraisalPDF()}
-              className="w-full py-2 px-3 bg-orange-100 hover:bg-orange-200 text-orange-950 rounded-xl text-base font-bold flex items-center justify-center gap-2 transition-all"
-            >
-              <Download className="w-4 h-4 text-[#FD6F3B]" />
-              <span>Export Now</span>
-            </button>
-          </div>
-
-          {/* Bottom Illustration Banner */}
-          <div className="p-6 bg-gradient-to-b from-orange-50 to-amber-50 rounded-3xl border border-orange-100 text-center space-y-3 relative overflow-hidden">
-            <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-md mx-auto">
-              <img 
-                src="/dr_ananya_sharma.png" 
-                alt="Dr. Ananya Sharma Impact" 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <h4 className="text-lg font-extrabold text-slate-800">Impact Matters.</h4>
-            <p className="text-base text-slate-500 leading-snug">
-              Your work creates change. We help you showcase it.
-            </p>
-          </div>
-
-        </div>
-
+        <aside className="space-y-6">
+          <section className="rounded-3xl border border-blue-200/80 bg-blue-50/60 p-6 shadow-xs"><div className="flex items-start justify-between gap-3"><div><span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-700"><FlaskConical className="h-3.5 w-3.5" />Real publication sync</span><h2 className="mt-3 text-xl font-extrabold text-slate-900">ORCID, OpenAlex &amp; Crossref</h2><p className="mt-2 text-sm leading-relaxed text-slate-600">Sync candidates from the configured publication sources. Nothing is added until you confirm it.</p></div></div><button onClick={syncPublications} disabled={actionBusy === 'sync-publications'} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">{actionBusy === 'sync-publications' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Sync publication sources</button>{candidates.error && <p className="mt-3 text-xs font-semibold text-red-700">{runtimeConfigMessage(candidates.error)}</p>}{candidateItems.length > 0 && <div className="mt-4 space-y-3">{candidateItems.map((candidate) => { const publication = candidate.publication || candidate; return <div key={candidate.id} className="rounded-2xl border border-blue-100 bg-white p-3"><p className="font-bold text-slate-900">{publication.title || publication.work_title || 'Untitled candidate'}</p><p className="mt-1 text-xs text-slate-500">{candidate.source || candidate.provider || 'Publication source'}{publication.doi ? ` · DOI ${publication.doi}` : ''}{publication.year ? ` · ${publication.year}` : ''}</p><div className="mt-3 flex gap-2"><button onClick={() => confirmCandidate(candidate)} disabled={actionBusy === `confirm-${candidate.id}`} className="flex-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">{actionBusy === `confirm-${candidate.id}` ? 'Saving…' : 'Confirm'}</button><button onClick={() => rejectCandidate(candidate)} disabled={actionBusy === `reject-${candidate.id}`} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{actionBusy === `reject-${candidate.id}` ? '…' : 'Reject'}</button></div></div>; })}</div>}{!candidates.loading && candidateItems.length === 0 && <p className="mt-4 text-xs font-semibold text-blue-800">No publication candidates are waiting for review.</p>}</section>
+          <section className="rounded-3xl border border-orange-200/80 bg-[#FFF4F0] p-6 shadow-xs"><div className="flex items-center gap-2 text-[#FD6F3B]"><Upload className="h-5 w-5" /><h3 className="text-xs font-bold uppercase tracking-wider text-orange-950">Evidence management</h3></div><p className="mt-2 text-sm leading-relaxed text-orange-900">Attach proof to one or more activities from the Evidence Library.</p><button onClick={() => setCurrentView('evidence')} className="mt-4 flex items-center gap-2 text-sm font-bold text-[#E05320] hover:underline">Open Evidence Library <ShieldCheck className="h-4 w-4" /></button></section>
+          {!hasAnyData && !activities.loading && <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-xs"><p className="text-sm font-semibold text-slate-500">Your record is ready for its first real activity.</p></section>}
+        </aside>
       </div>
-
     </div>
   );
 }
