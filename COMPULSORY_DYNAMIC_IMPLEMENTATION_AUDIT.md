@@ -10,7 +10,7 @@ The hosted Supabase project `fcnmmxxnhrolgaxetnyz` is now reachable through the 
 | --- | --- |
 | Compulsory feature code paths implemented | 12 / 12 |
 | Dynamic compulsory data paths | 12 |
-| Partially runtime-verified | Evidence upload/download, publication provider sync, backend-over-Postgres, and two-browser realtime workflow |
+| Partially runtime-verified | Evidence API metadata/attach flow, publication provider sync, backend-over-Postgres, and two-browser realtime workflow |
 | Hardcoded compulsory business data in faculty/admin paths | 0 |
 | Broken local checks | 0 |
 | Live Supabase schema/seed/Auth/RLS verification | Passed |
@@ -25,7 +25,7 @@ The hosted Supabase project `fcnmmxxnhrolgaxetnyz` is now reachable through the 
 | Academic activity CRUD | Activity record, filters, edit/archive, evidence attach | Owner-scoped CRUD and server query filters | `academic_activities`, participants, indexes | Cache invalidation/polling | Academic-year, permission, API contract coverage; live ownership RLS | Yes | Implemented; live ownership RLS passed |
 | Faculty dashboard | Real counters, recent activity, appraisal state | `/dashboard/faculty` aggregate queries | Activities, cycles, submissions, notifications | Faculty subscription + 5-second fallback | Build and API contracts | Yes | Implemented |
 | Publication discovery | Sync, candidate review, confirm/reject | ORCID + OpenAlex + Crossref connectors and dedupe | Publication records/authors/candidates; confirmed activity | Query invalidation | Dedupe contract test | Yes, provider config optional | Implemented; live provider pending |
-| Evidence management | Upload, attach, list, download, delete | Private signed upload/download URLs and validation | Evidence metadata and activity links | Cache invalidation | MIME/size and storage contracts | Yes | Implemented; live file round-trip pending |
+| Evidence management | Upload, attach, list, download, delete | Private signed upload/download URLs and validation | Evidence metadata and activity links | Cache invalidation | MIME/size and storage contracts; live private storage primitive | Yes | Implemented; private Storage upload/signed download passed; API metadata flow pending |
 | Self-appraisal generation | Readiness, draft, submit, feedback, PDF download | Section generation and state transitions | Templates, sections, cycles, submissions/items/reviews | Submission + notification subscriptions | Readiness/state tests | Yes | Implemented |
 | Admin directory/overview | Server search, sort, filters, pagination | Institution-scoped queries and aggregates | Profiles, faculty profiles, cycles, submissions | Admin cache invalidation + polling | Admin authorization contracts; live institutional visibility | Yes | Implemented; live RLS visibility passed |
 | Admin review workflow | Detail, comment, return, approve, reject | Persisted review actions and notifications | Reviews, submissions, notifications | Faculty/admin round-trip wiring | State/authorization contracts | Yes | Implemented; live two-browser pending |
@@ -116,6 +116,7 @@ The migration also creates required enums, indexes, auth provisioning trigger, R
 | Live Supabase migration and seed through authenticated Supabase API | Passed; migration applied and seed run twice without duplicates |
 | Live Auth role login/profile provisioning | Passed; faculty and admin roles authenticated; new faculty received one empty profile |
 | Live RLS isolation | Passed; faculty B read of faculty A activity returned 0, unauthorized update had no effect, admin saw 2 profiles/9 activities |
+| Live private Storage upload/signed download | Passed; PDF object uploaded, signed URL returned HTTP 200, object cleaned up |
 | Playwright/new-user/evidence/publication E2E | Not run: no configured live environment |
 | Two-browser realtime appraisal recording | Not run: no configured live environment |
 | Supabase CLI `link`/raw Postgres connection | Blocked by current network: pooler TLS timeout and direct IPv6 no route |
