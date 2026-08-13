@@ -23,6 +23,22 @@ export async function signInWithPassword(email, password) {
   return data;
 }
 
+export async function signInWithGoogle(redirectTo = window.location.origin) {
+  const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      // The auth trigger (handle_new_user) provisions a faculty profile
+      // for any new auth.users row regardless of provider, so a first-time
+      // Google sign-in gets the same onboarding path as email/password
+      // signup -- no separate Google-specific account creation flow needed.
+      queryParams: { access_type: 'offline', prompt: 'select_account' },
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function signUpFaculty({ email, password, fullName, institution, department, employeeCode }) {
   const { data, error } = await getSupabaseClient().auth.signUp({
     email,

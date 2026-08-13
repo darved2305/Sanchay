@@ -11,6 +11,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -90,15 +94,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.runtime_settings = runtime
+    # IP-keyed by default (get_remote_address) rather than per-user: this has
+    # to also cover unauthenticated routes like the Google OAuth callback,
+    # and slowapi's default-limit path (no per-route @limiter.limit needed)
+    # only works off the request itself, before any auth dependency runs.
+    limiter = Limiter(key_func=get_remote_address, default_limits=[runtime.rate_limit_default])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=runtime.cors_origins,
+        # Local dev frontends run on an arbitrary port and interchangeably as
+        # localhost/127.0.0.1; matching every loopback origin here removes
+        # that whole class of CORS breakage without touching CORS_ORIGINS,
+        # which stays the actual allowlist for any real deployed origin.
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=runtime.cors_allow_credentials,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", runtime.request_id_header],
         expose_headers=[runtime.request_id_header],
     )
+    # Added last so it wraps outermost and rejects over-limit requests before
+    # CORS/request-id/routing does any other work.
+    app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
 
     @app.exception_handler(Exception)

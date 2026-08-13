@@ -16,6 +16,7 @@ export default function EvidencePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [suggestion, setSuggestion] = useState(null);
   const items = listItems(evidence.data);
   const activityItems = listItems(activities.data).filter((item) => item.status !== 'archived');
   const selectedActivity = useMemo(() => activityItems.find((item) => item.id === activityId), [activityId, activityItems]);
@@ -31,13 +32,27 @@ export default function EvidencePage() {
   const upload = async (event) => {
     event.preventDefault();
     if (!file) return setError('Choose a file before uploading.');
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setSuggestion(null);
     try {
-      await uploadEvidenceFile(file, activityId ? [activityId] : []);
+      const uploaded = await uploadEvidenceFile(file, activityId ? [activityId] : []);
       setFile(null); event.target.reset(); setNotice(selectedActivity ? 'Evidence uploaded and attached.' : 'Evidence uploaded. Attach it to an activity when ready.');
       invalidateQueries(['evidence']); invalidateQueries(['activities']); invalidateQueries(['dashboard', 'faculty']);
+      if (!activityId && uploaded?.id) {
+        const matches = listItems(payloadData(await api.evidence.matches(uploaded.id)));
+        if (matches.length > 0) setSuggestion({ evidenceId: uploaded.id, match: matches[0] });
+      }
     } catch (uploadError) { setError(runtimeConfigMessage(uploadError)); } finally { setBusy(false); }
     return undefined;
+  };
+  const acceptSuggestion = async () => {
+    if (!suggestion) return;
+    setBusy(true);
+    try {
+      await api.evidence.attach(suggestion.evidenceId, suggestion.match.activity.id);
+      invalidateQueries(['evidence']); invalidateQueries(['activities']);
+      setNotice('Evidence attached to the matching activity.');
+      setSuggestion(null);
+    } catch (attachError) { setError(runtimeConfigMessage(attachError)); } finally { setBusy(false); }
   };
   const download = async (item) => {
     try {
@@ -86,6 +101,17 @@ export default function EvidencePage() {
         </form>
         {error && <Notice tone="error" className="mt-4">{error}</Notice>}
         {notice && <Notice tone="success" className="mt-4">{notice}</Notice>}
+        {suggestion && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--brand-mint-strong)] bg-[var(--brand-mint)] p-3.5">
+            <p className="text-sm font-bold text-[var(--brand-ink)]">
+              This looks like evidence for "{suggestion.match.activity.title}". Attach?
+            </p>
+            <div className="flex gap-2">
+              <Button variant="success" size="sm" onClick={acceptSuggestion} disabled={busy}>Attach</Button>
+              <Button variant="ghost" size="sm" onClick={() => setSuggestion(null)}>Dismiss</Button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="app-surface overflow-hidden">

@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+_STANDARD_LOG_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
@@ -17,9 +20,12 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for key in ("request_id", "method", "path", "status_code", "duration_ms", "user_id"):
-            value = getattr(record, key, None)
-            if value is not None:
+        # Anything passed via logging's `extra={...}` lands as arbitrary
+        # attributes on the record -- forward all of it (not a fixed
+        # whitelist), otherwise diagnostic context like `extra={"error": ...}`
+        # is silently dropped and warnings become undebuggable in production.
+        for key, value in record.__dict__.items():
+            if key not in _STANDARD_LOG_RECORD_ATTRS and value is not None:
                 payload[key] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)

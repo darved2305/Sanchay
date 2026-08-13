@@ -22,6 +22,7 @@ import { api } from '../lib/api';
 import { getRuntimeConfig, runtimeConfigMessage } from '../lib/config';
 import {
   sendPasswordReset,
+  signInWithGoogle,
   signInWithPassword,
   signUpFaculty,
 } from '../lib/supabase';
@@ -142,6 +143,21 @@ export default function LoginPage({ initialMode = 'signin', onLogin }) {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    clearMessages();
+    setBusy(true);
+    try {
+      // Full-page redirect to Google -- there is no session to act on here.
+      // Google redirects back to /dashboard with the session in the URL;
+      // supabase-js's detectSessionInUrl picks it up automatically before
+      // DashboardApp's own auth check runs.
+      await signInWithGoogle(`${window.location.origin}/dashboard`);
+    } catch (authError) {
+      setError(runtimeConfigMessage(authError));
+      setBusy(false);
+    }
+  };
+
   const handleReset = async () => {
     clearMessages();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signInEmail.trim())) {
@@ -231,10 +247,10 @@ export default function LoginPage({ initialMode = 'signin', onLogin }) {
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--brand-border-soft)]" /></div>
                   <span className="relative bg-[var(--brand-surface)] px-3.5 text-sm font-semibold text-[var(--brand-subtle)]">or continue with</span>
                 </div>
-                <button type="button" disabled className="btn btn-secondary w-full !text-[var(--brand-subtle)]" title="Google sign-in is not enabled yet">
-                  <span className="text-base font-extrabold">G</span><span>Google sign-in · Coming soon</span>
+                <button type="button" onClick={handleGoogleSignIn} disabled={busy} className="btn btn-secondary w-full">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="text-base font-extrabold">G</span>}
+                  <span>Continue with Google</span>
                 </button>
-                <p className="mt-3 text-center text-xs font-medium text-[var(--brand-subtle)]">Email and password are available today.</p>
                 <p className="mt-5 text-center text-sm font-medium text-[var(--brand-muted)]">
                   New to Sanchaya? <button type="button" onClick={() => switchTab('register')} className="font-bold text-[var(--brand-primary-hover)] hover:underline">Create an account</button>
                 </p>

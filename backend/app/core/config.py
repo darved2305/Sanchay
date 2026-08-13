@@ -9,17 +9,27 @@ without hiding them behind an in-memory repository.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# A relative ".env" resolves against whatever directory the process happened
+# to be launched from, so `cd backend && uvicorn ...` and
+# `uvicorn ... --app-dir backend` (run from the repo root) silently load two
+# different files. Anchoring to the repo root (three levels up from this
+# file: core -> app -> backend -> repo root) makes config loading the same
+# regardless of launch cwd. Harmless in production, where no .env file
+# exists at that path and real environment variables are used instead.
+_REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     """Environment-backed settings used by the API and seed tooling."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_REPO_ROOT_ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -53,12 +63,46 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = True
     request_id_header: str = "X-Request-ID"
 
+    # Applies to every route by default (slowapi's SlowAPIMiddleware, main.py)
+    # regardless of auth state -- there was previously no rate limiting at
+    # any layer (no app middleware, no reverse-proxy throttling on Railway),
+    # so an unauthenticated route like the OAuth callback, or a scripted
+    # client hammering an LLM-backed endpoint, had no limit at all.
+    rate_limit_default: str = "120/minute"
+
     orcid_api_url: HttpUrl = "https://pub.orcid.org/v3.0"
     openalex_api_url: HttpUrl = "https://api.openalex.org"
     crossref_api_url: HttpUrl = "https://api.crossref.org"
     external_api_timeout_seconds: float = Field(default=15.0, gt=0)
     openalex_mailto: str | None = None
     crossref_mailto: str | None = None
+
+    # Optional LLM provider for structured extraction (CV import, teaching
+    # change interpretation, LOR letter polish, quick-add parsing). Every
+    # caller must work without this key configured, falling back to
+    # deterministic heuristics; see app/services/llm.py. Groq's inference is
+    # used here specifically for its latency -- these are interactive,
+    # in-request calls (a professor is waiting on the result), not batch
+    # jobs, so response speed matters more than using the single smartest
+    # model available.
+    groq_api_key: SecretStr | None = None
+    # Groq is decommissioning llama-3.1-8b-instant on 2026-08-16; openai/gpt-oss-20b
+    # is Groq's own recommended replacement (confirmed via console.groq.com/docs/models).
+    llm_model: str = "openai/gpt-oss-20b"
+    # Separate vision-capable model for OCR-by-LLM (scanned/photographed CVs,
+    # certificates): text-only models can't take image input at all, and this
+    # one is deliberately not the default `llm_model` above so a Groq catalog
+    # change to one doesn't silently break the other.
+    llm_vision_model: str = "qwen/qwen3.6-27b"
+    llm_timeout_seconds: float = Field(default=15.0, gt=0)
+
+    # Google OAuth (Gmail/Calendar/Drive) for Reconstruct My Year. Read-only
+    # scopes only; absent credentials keep the connector in a clean
+    # "not configured" state rather than crashing.
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
+    google_oauth_redirect_uri: str | None = None
+    reconstruct_fake_sources: bool = False
 
     @field_validator("cors_origins", mode="before")
     @classmethod

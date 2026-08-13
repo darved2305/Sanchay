@@ -1,16 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, FolderArchive, MessageSquare } from 'lucide-react';
+import { BarChart3, Calendar, FolderArchive } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import DashboardOverview from './DashboardOverview';
 import ActivitiesSubmissions from './ActivitiesSubmissions';
 import ReconstructMyYear from './ReconstructMyYear';
+import CvImportPage from './CvImportPage';
+import CareerGrowthPage from './CareerGrowthPage';
+import AnyFormPage from './AnyFormPage';
+import DeadlineRescuePage from './DeadlineRescuePage';
 import AdminPanel from './AdminPanel';
+import AdminInstitutionEvents from './AdminInstitutionEvents';
+import AdminRequestsReports from './AdminRequestsReports';
+import TeachingChangePage from './TeachingChangePage';
+import LorStudioPage from './LorStudioPage';
+import CommunityPage from './CommunityPage';
 import ProfilePage from './ProfilePage';
 import EvidencePage from './EvidencePage';
 import AppraisalPage from './AppraisalPage';
 import AddActivityModal from '../components/AddActivityModal';
+import QuickAddModal from '../components/QuickAddModal';
 import { Button, EmptyState, Skeleton } from '../components/ui';
 import { api, payloadData } from '../lib/api';
 import { clearQueryCache, invalidateQueries } from '../lib/queryCache';
@@ -18,7 +28,10 @@ import { getSession, signOut } from '../lib/supabase';
 import { runtimeConfigMessage } from '../lib/config';
 import { useFacultyRealtime } from '../lib/realtime';
 
-const REALTIME_QUERY_KEYS = [['dashboard', 'faculty'], ['activities'], ['evidence'], ['appraisal'], ['notifications'], ['admin']];
+const REALTIME_QUERY_KEYS = [
+  ['dashboard', 'faculty'], ['activities'], ['evidence'], ['appraisal'], ['notifications'], ['admin'],
+  ['career'], ['lor'], ['reconstruct'], ['teaching'], ['community'],
+];
 
 function AuthError({ message, onRetry }) {
   return (
@@ -51,7 +64,6 @@ function ShellSkeleton() {
 const DEFERRED_VIEWS = {
   reports: { label: 'Reports', icon: BarChart3 },
   calendar: { label: 'Academic Calendar', icon: Calendar },
-  messages: { label: 'Messages', icon: MessageSquare },
 };
 
 export default function DashboardApp() {
@@ -63,6 +75,7 @@ export default function DashboardApp() {
   const [activitySearch, setActivitySearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
@@ -88,6 +101,7 @@ export default function DashboardApp() {
   const openAddModal = (activity = null) => { setEditingActivity(activity); setIsAddModalOpen(true); };
   const closeAddModal = () => { setEditingActivity(null); setIsAddModalOpen(false); };
   const handleActivitySaved = () => { invalidateQueries(['activities']); invalidateQueries(['dashboard', 'faculty']); closeAddModal(); };
+  const handleQuickAddConfirmed = () => { invalidateQueries(['activities']); invalidateQueries(['dashboard', 'faculty']); };
   const handleSignOut = async () => { try { await signOut(); } finally { clearQueryCache(); navigate('/'); } };
   const handleGlobalSearch = (value) => {
     if (currentRole === 'Faculty') {
@@ -102,19 +116,20 @@ export default function DashboardApp() {
   const DeferredIcon = DEFERRED_VIEWS[currentView]?.icon || FolderArchive;
 
   return (
-    <div className="min-h-screen antialiased">
+    <div className="app-shell antialiased">
       <Header
         profile={profile}
         currentRole={currentRole}
         setCurrentView={setCurrentView}
         onSearch={handleGlobalSearch}
         onOpenAddModal={() => openAddModal()}
+        onOpenQuickAdd={() => setIsQuickAddOpen(true)}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         onOpenMobileNav={() => setIsMobileNavOpen(true)}
         onSignOut={handleSignOut}
       />
-      <div className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[1440px]">
+      <div className="app-shell-row mx-auto w-full max-w-[1440px]">
         <Sidebar
           profile={profile}
           currentView={currentView}
@@ -124,14 +139,23 @@ export default function DashboardApp() {
           isMobileOpen={isMobileNavOpen}
           onCloseMobile={() => setIsMobileNavOpen(false)}
         />
-        <main className="min-w-0 flex-1 p-4 transition-all duration-300 sm:p-6 lg:p-8">
+        <main className="app-shell-main p-4 transition-all duration-300 sm:p-6 lg:p-8">
           {currentRole === 'Admin' && currentView === 'admin' && <AdminPanel />}
+          {currentRole === 'Admin' && currentView === 'admin-events' && <AdminInstitutionEvents />}
+          {currentRole === 'Admin' && currentView === 'admin-requests' && <AdminRequestsReports />}
           {currentRole === 'Faculty' && currentView === 'dashboard' && <DashboardOverview profile={profile} setCurrentView={setCurrentView} onOpenAddModal={() => openAddModal()} />}
           {currentRole === 'Faculty' && currentView === 'activities' && <ActivitiesSubmissions initialQuery={activitySearch} setCurrentView={setCurrentView} onOpenAddModal={openAddModal} />}
           {currentRole === 'Faculty' && currentView === 'profile' && <ProfilePage />}
           {currentRole === 'Faculty' && currentView === 'evidence' && <EvidencePage />}
           {currentRole === 'Faculty' && currentView === 'appraisal' && <AppraisalPage />}
           {currentRole === 'Faculty' && currentView === 'reconstruct' && <ReconstructMyYear setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && currentView === 'cv-import' && <CvImportPage setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && currentView === 'career' && <CareerGrowthPage />}
+          {currentRole === 'Faculty' && currentView === 'teaching-change' && <TeachingChangePage setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && currentView === 'lor-studio' && <LorStudioPage setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && currentView === 'community' && <CommunityPage />}
+          {currentRole === 'Faculty' && currentView === 'forms' && <AnyFormPage setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && currentView === 'rescue' && <DeadlineRescuePage setCurrentView={setCurrentView} />}
           {currentRole === 'Faculty' && DEFERRED_VIEWS[currentView] && (
             <div className="app-surface">
               <EmptyState
@@ -145,6 +169,9 @@ export default function DashboardApp() {
         </main>
       </div>
       {currentRole === 'Faculty' && <AddActivityModal isOpen={isAddModalOpen} activity={editingActivity} onClose={closeAddModal} onAddSuccess={handleActivitySaved} />}
+      {currentRole === 'Faculty' && (
+        <QuickAddModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onConfirmed={handleQuickAddConfirmed} />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, PanelLeft, PanelLeftClose, Plus, Search } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Menu, PanelLeft, PanelLeftClose, Plus, Search, Sparkles } from 'lucide-react';
 import Logo from './Logo';
 import { Avatar } from './ui';
 import { api, listItems } from '../lib/api';
@@ -8,7 +8,7 @@ import { useApiQuery, invalidateQueries } from '../lib/queryCache';
 function displayName(profile) { return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member'; }
 function profileRole(profile) { return ['admin', 'dept_admin', 'institution_admin', 'reviewer'].includes(profile?.role) ? 'Administrator' : 'Faculty'; }
 
-export default function Header({ profile, currentRole, setCurrentView, onOpenAddModal, onSearch, isSidebarOpen, setIsSidebarOpen, onOpenMobileNav, onSignOut }) {
+export default function Header({ profile, currentRole, setCurrentView, onOpenAddModal, onOpenQuickAdd, onSearch, isSidebarOpen, setIsSidebarOpen, onOpenMobileNav, onSignOut }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,7 +22,7 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
   const closeAllMenus = () => { setShowNotifications(false); setShowProfileMenu(false); };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--brand-border-soft)] bg-[color:rgb(251_250_247_/_92%)] px-4 py-3 backdrop-blur-xl sm:px-6">
+    <header className="z-30 shrink-0 border-b border-[var(--brand-border-soft)] bg-[color:rgb(251_250_247_/_92%)] px-4 py-3 backdrop-blur-xl sm:px-6">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <button
@@ -63,7 +63,18 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
 
         <div className="flex items-center gap-2 sm:gap-3">
           {currentRole !== 'Admin' && (
-            <ButtonAdd onClick={() => onOpenAddModal?.()} />
+            <>
+              <button
+                type="button"
+                onClick={() => onOpenQuickAdd?.()}
+                aria-label="Quick add with natural language or voice"
+                title="Quick Add"
+                className="rounded-[var(--radius-control)] border border-[var(--brand-border)] bg-[var(--brand-surface)] p-2.5 text-[var(--brand-muted)] transition hover:bg-[var(--brand-primary-softer)] hover:text-[var(--brand-primary)]"
+              >
+                <Sparkles className="h-5 w-5" />
+              </button>
+              <ButtonAdd onClick={() => onOpenAddModal?.()} />
+            </>
           )}
 
           <div className="relative">

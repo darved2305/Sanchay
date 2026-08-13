@@ -12,10 +12,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth import CurrentUser, require_faculty
+from ..core.config import Settings, get_settings
 from ..core.db import get_db
+from ..services.jobs import create_job, update_job
+from ..services.llm import LLMProvider
 from ..services.pagination import decode_cursor, page_result
+from ..services.quick_add import parse_quick_add
 from ..services.sql import mapping_or_404
-from .schemas import ActivityCategory, ActivityCreate, ActivityPatch, ActivitySource, ActivityStatus, BulkConfirmRequest, EvidenceStatus
+from .schemas import ActivityCategory, ActivityCreate, ActivityPatch, ActivitySource, ActivityStatus, BulkConfirmRequest, EvidenceStatus, QuickAddRequest
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 
@@ -328,6 +332,48 @@ async def delete_activity(
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, bool]:
     return await archive_activity(activity_id, user, session)
+
+
+@router.post("/quick-add")
+async def quick_add_activity(
+    payload: QuickAddRequest,
+    user: CurrentUser = Depends(require_faculty),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Parse a natural-language note into one proposed activity for confirmation.
+
+    Shared by the global Quick Add button and Voice Dump (browser
+    speech-to-text feeds the same text into this endpoint).
+    """
+
+    draft = await parse_quick_add(payload.text, LLMProvider(settings))
+    result = await session.execute(
+        text(
+            """
+            insert into public.academic_activities (
+              owner_id, category, title, organization, start_date, duration_hours,
+              academic_year, metadata, status, source, confidence
+            ) values (
+              :owner_id, cast(:category as activity_category), :title, :organization, :start_date,
+              :duration_hours, :academic_year, cast(:metadata as jsonb), 'proposed', 'quick_capture', 0.6
+            ) returning id
+            """
+        ),
+        {
+            "owner_id": user.user_id,
+            "category": draft["category"],
+            "title": draft["title"],
+            "organization": draft.get("organization"),
+            "start_date": draft["start_date"],
+            "duration_hours": draft.get("duration_hours"),
+            "academic_year": draft["academic_year"],
+            "metadata": json.dumps({"quick_add_text": payload.text}),
+        },
+    )
+    activity_id = result.scalar_one()
+    await session.commit()
+    return await _activity_detail(session, activity_id, user.user_id)
 
 
 @router.post("/bulk-confirm")

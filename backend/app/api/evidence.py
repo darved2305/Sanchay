@@ -16,6 +16,7 @@ from ..core.auth import CurrentUser, require_faculty
 from ..core.config import Settings, get_settings
 from ..core.db import get_db
 from ..core.storage import StorageClient, StorageError
+from ..services.evidence_match import find_evidence_matches
 from ..services.pagination import decode_cursor, page_result
 from ..services.sql import mapping_or_404
 from .schemas import EvidenceAttachRequest, EvidenceUploadRequest
@@ -264,6 +265,29 @@ async def detach_evidence(
     )
     await session.commit()
     return {"ok": True}
+
+
+@router.get("/{evidence_id}/matches")
+async def evidence_pending_matches(
+    evidence_id: UUID,
+    user: CurrentUser = Depends(require_faculty),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """USP 4 (Proof Later): suggest which evidence-pending activities this file likely proves."""
+
+    evidence = await _evidence(session, evidence_id, user.user_id)
+    pending_result = await session.execute(
+        text(
+            "select id, title, organization from public.academic_activities "
+            "where owner_id = :owner_id and evidence_status = 'pending' and status <> 'archived'"
+        ),
+        {"owner_id": user.user_id},
+    )
+    pending_activities = [dict(row) for row in pending_result.mappings().all()]
+    matches = find_evidence_matches(evidence, pending_activities)
+    for match in matches:
+        match["activity"]["id"] = str(match["activity"]["id"])
+    return {"items": matches}
 
 
 @router.get("/{evidence_id}/download")

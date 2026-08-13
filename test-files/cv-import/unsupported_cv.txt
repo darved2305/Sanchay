@@ -1,0 +1,13 @@
+Dr. Ananya Sharma
+Associate Professor, Department of Computer Science
+
+ACADEMIC ACTIVITIES
+Attended FDP on Generative AI, IIT Bombay, 2024
+Delivered an invited talk on Federated Learning at IEEE Pune Chapter, 2023
+Published a paper titled 'Privacy-Preserving ML' in IEEE Transactions, 2023
+Reviewer for the International Conference on Machine Learning, 2022
+Supervised 3 undergraduate capstone projects, 2021-2024
+Member, Departmental Curriculum Committee, 2020-present
+Received the Best Paper Award at NCVPRIPG, 2019
+
+This line has no academic keyword and should not become an activity.

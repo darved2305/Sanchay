@@ -168,6 +168,150 @@ class BulkConfirmRequest(BaseModel):
     activity_ids: list[UUID] = Field(min_length=1, max_length=100)
 
 
+class QuickAddRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=1000)
+
+
+class CareerGoalSetRequest(BaseModel):
+    career_rule_id: UUID
+
+
+class CareerRuleCreate(BaseModel):
+    goal_key: str = Field(min_length=1, max_length=100)
+    goal_label: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    rules: list[dict[str, Any]] = Field(min_length=1, max_length=20)
+
+
+class ReconstructRunCreate(BaseModel):
+    academic_year: str = Field(min_length=4, max_length=30)
+
+
+class FormFieldPatch(BaseModel):
+    value: str | None = Field(default=None, max_length=1000)
+
+
+class DepartmentReportRequest(BaseModel):
+    department: str | None = Field(default=None, max_length=200)
+    academic_year: str | None = Field(default=None, max_length=30)
+
+
+class AdminRequestProcessRequest(BaseModel):
+    department: str | None = Field(default=None, max_length=200)
+    academic_year: str | None = Field(default=None, max_length=30)
+
+
+class CourseSnapshotCreate(BaseModel):
+    course_title: str = Field(min_length=1, max_length=300)
+    academic_year: str = Field(min_length=4, max_length=30)
+
+
+class TeachingCompareRequest(BaseModel):
+    snapshot_a_id: UUID
+    snapshot_b_id: UUID
+
+    @model_validator(mode="after")
+    def distinct_snapshots(self) -> "TeachingCompareRequest":
+        if self.snapshot_a_id == self.snapshot_b_id:
+            raise ValueError("snapshot_a_id and snapshot_b_id must be different snapshots")
+        return self
+
+
+class StudentLinkCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=200)
+    roll_number: str | None = Field(default=None, max_length=100)
+    program: str | None = Field(default=None, max_length=200)
+    relationship: str = Field(min_length=1, max_length=100)
+    course_or_project: str | None = Field(default=None, max_length=300)
+    start_date: date | None = None
+    end_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def valid_date_range(self) -> "StudentLinkCreate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date cannot be before start_date")
+        return self
+
+
+class StudentAchievementCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+    achieved_on: date | None = None
+
+
+class LorPurpose(StrEnum):
+    ms = "ms"
+    job = "job"
+    scholarship = "scholarship"
+    phd = "phd"
+
+
+class LetterDraftRequest(BaseModel):
+    student_id: UUID
+    purpose: LorPurpose
+
+
+class LetterDraftUpdate(BaseModel):
+    draft_text: str = Field(min_length=1, max_length=20000)
+
+
+class ConnectionRequestCreate(BaseModel):
+    to_profile_id: UUID
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ConnectionRespondRequest(BaseModel):
+    action: Literal["accept", "decline"]
+
+
+class CommunityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class PostKind(StrEnum):
+    post = "post"
+    question = "question"
+    opportunity = "opportunity"
+    announcement = "announcement"
+
+
+class CommunityPostCreate(BaseModel):
+    community_id: UUID | None = None
+    kind: PostKind = PostKind.post
+    body: str = Field(min_length=1, max_length=5000)
+
+
+class PostCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class MessageCreate(BaseModel):
+    peer_profile_id: UUID
+
+
+class InstitutionEventParticipant(BaseModel):
+    profile_id: UUID
+    role: str = Field(default="participant", max_length=100)
+
+
+class InstitutionEventCreate(BaseModel):
+    category: ActivityCategory
+    title: str = Field(min_length=1, max_length=300)
+    organization: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    start_date: date | None = None
+    end_date: date | None = None
+    participants: list[InstitutionEventParticipant] = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def valid_date_range(self) -> "InstitutionEventCreate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date cannot be before start_date")
+        return self
+
+
 class EvidenceUploadRequest(BaseModel):
     file_name: str = Field(min_length=1, max_length=255)
     mime: str = Field(min_length=1, max_length=150)

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileCheck, FolderArchive, Layers, LayoutDashboard, RefreshCw, UserRound, X } from 'lucide-react';
+import { CalendarPlus, FileCheck, FileUp, FolderArchive, GitCompare, GraduationCap, Layers, LayoutDashboard, RefreshCw, Send, Sparkles, TrendingUp, Users, UserRound, X, Zap } from 'lucide-react';
 import { Avatar } from './ui';
 
 function displayName(profile) { return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member'; }
@@ -9,11 +9,22 @@ const FACULTY_NAV = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
   { id: 'activities', label: 'Activities & Record', icon: Layers },
   { id: 'reconstruct', label: 'Reconstruct My Year', icon: RefreshCw },
+  { id: 'forms', label: 'Any Form Assistant', icon: Sparkles },
+  { id: 'rescue', label: 'Deadline Rescue', icon: Zap },
+  { id: 'cv-import', label: 'Import Old Records', icon: FileUp },
+  { id: 'career', label: 'Career Growth', icon: TrendingUp },
+  { id: 'teaching-change', label: 'Teaching Change', icon: GitCompare },
+  { id: 'lor-studio', label: 'LOR Studio', icon: GraduationCap },
+  { id: 'community', label: 'Community', icon: Users },
   { id: 'appraisal', label: 'Self-Appraisal', icon: FileCheck },
   { id: 'evidence', label: 'Evidence Library', icon: FolderArchive },
   { id: 'profile', label: 'My Profile', icon: UserRound },
 ];
-const ADMIN_NAV = [{ id: 'admin', label: 'Admin Action Center', icon: LayoutDashboard }];
+const ADMIN_NAV = [
+  { id: 'admin', label: 'Admin Action Center', icon: LayoutDashboard },
+  { id: 'admin-events', label: 'Institution Events', icon: CalendarPlus },
+  { id: 'admin-requests', label: 'Requests & Reports', icon: Send },
+];
 
 function NavItems({ navItems, currentView, onSelect, collapsed }) {
   return (
@@ -68,7 +79,7 @@ export default function Sidebar({ profile, currentView, setCurrentView, currentR
     <>
       {/* Desktop / tablet sidebar */}
       <aside
-        className={`hidden min-h-[calc(100vh-64px)] shrink-0 flex-col justify-between border-r border-[var(--brand-border-soft)] bg-[var(--brand-canvas)] px-3 py-5 transition-all duration-300 lg:flex ${
+        className={`hidden h-full shrink-0 flex-col justify-between overflow-y-auto border-r border-[var(--brand-border-soft)] bg-[var(--brand-canvas)] px-3 py-5 transition-all duration-300 lg:flex ${
           isSidebarOpen ? 'w-60' : 'w-[76px]'
         }`}
       >

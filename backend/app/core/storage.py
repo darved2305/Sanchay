@@ -111,6 +111,13 @@ class StorageClient:
         )
         return response.json() if response.content else {"ok": True}
 
+    async def download_object(self, bucket: str, path: str) -> bytes:
+        response = await self._request(
+            "GET",
+            f"object/{quote(bucket, safe='')}/{quote(path, safe='/')}",
+        )
+        return response.content
+
     async def delete_object(self, bucket: str, path: str) -> None:
         await self._request(
             "DELETE",

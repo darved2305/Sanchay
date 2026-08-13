@@ -88,7 +88,32 @@
   }
 }
 
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+}
+
 @layer components {
+  /* ---------- App shell: fixed sidebar, independently scrolling main ---------- */
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .app-shell-row {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .app-shell-main {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   /* ---------- Buttons: one system, semantic variants ---------- */
   .btn {
     display: inline-flex;
