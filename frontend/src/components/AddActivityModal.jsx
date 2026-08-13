@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Upload, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CheckCircle2, Loader2, Upload, X } from 'lucide-react';
 import { api, payloadData, uploadEvidenceFile } from '../lib/api';
 import { ACTIVITY_CATEGORIES, EVIDENCE_ACCEPT, EVIDENCE_MIME_TYPES, MAX_EVIDENCE_BYTES } from '../lib/constants';
 import { runtimeConfigMessage } from '../lib/config';
+import { Button, Field, Notice } from './ui';
+import { modalEnter } from '../lib/motion';
 
 const emptyForm = {
   title: '',
@@ -67,8 +70,6 @@ export default function AddActivityModal({ isOpen, onClose, onAddSuccess, activi
     }
   }, [activity, isOpen]);
 
-  if (!isOpen) return null;
-
   const update = (field, value) => setForm((previous) => ({ ...previous, [field]: value }));
 
   const handleFileChange = (event) => {
@@ -115,24 +116,105 @@ export default function AddActivityModal({ isOpen, onClose, onAddSuccess, activi
     }
   };
 
+  const inputClass = 'input';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" aria-label="Close activity form"><X className="h-5 w-5" /></button>
-        <div className="pr-8"><div className="flex items-center gap-2"><h2 className="text-xl font-extrabold text-slate-900">{activity ? 'Edit Activity' : 'Log New Activity'}</h2><span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-950">Real record</span></div><p className="mt-0.5 text-base text-slate-500">Save the contribution to your academic record. You can attach proof now or later.</p></div>
-        {error && <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
-        <form onSubmit={submit} className="space-y-4 text-base">
-          <div><label htmlFor="activity-title" className="mb-1 block font-bold text-slate-700">Activity Title *</label><input id="activity-title" value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="e.g. Data Structures Lab curriculum redesign" className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label htmlFor="activity-category" className="mb-1 block font-bold text-slate-700">Category *</label><select id="activity-category" value={form.category} onChange={(event) => update('category', event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required>{ACTIVITY_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></div><div><label htmlFor="activity-start" className="mb-1 block font-bold text-slate-700">Start Date *</label><input id="activity-start" type="date" value={form.start_date} onChange={(event) => update('start_date', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label htmlFor="activity-end" className="mb-1 block font-bold text-slate-700">End Date <span className="font-medium text-slate-400">(optional)</span></label><input id="activity-end" type="date" min={form.start_date || undefined} value={form.end_date} onChange={(event) => update('end_date', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div><div><label htmlFor="activity-year" className="mb-1 block font-bold text-slate-700">Academic Year <span className="font-medium text-slate-400">(optional)</span></label><input id="activity-year" value={form.academic_year} onChange={(event) => update('academic_year', event.target.value)} placeholder="2025-26" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label htmlFor="activity-org" className="mb-1 block font-bold text-slate-700">Organization</label><input id="activity-org" value={form.organization} onChange={(event) => update('organization', event.target.value)} placeholder="Institution or publisher" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div><div><label htmlFor="activity-role" className="mb-1 block font-bold text-slate-700">Role</label><input id="activity-role" value={form.role} onChange={(event) => update('role', event.target.value)} placeholder="PI, mentor, participant…" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label htmlFor="activity-location" className="mb-1 block font-bold text-slate-700">Location</label><input id="activity-location" value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="City or online" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div><div><label htmlFor="activity-hours" className="mb-1 block font-bold text-slate-700">Duration (hours)</label><input id="activity-hours" type="number" min="0" step="0.5" value={form.duration_hours} onChange={(event) => update('duration_hours', event.target.value)} placeholder="e.g. 12" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div></div>
-          <div><label htmlFor="activity-description" className="mb-1 block font-bold text-slate-700">Description / Impact Notes</label><textarea id="activity-description" rows={3} value={form.description} onChange={(event) => update('description', event.target.value)} placeholder="Context, outcome, citation or notes" className="w-full rounded-xl border border-slate-200 px-3.5 py-2 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label htmlFor="activity-doi" className="mb-1 block font-bold text-slate-700">DOI</label><input id="activity-doi" value={form.doi} onChange={(event) => update('doi', event.target.value)} placeholder="10.xxxx/xxxxx" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div><div><label htmlFor="activity-url" className="mb-1 block font-bold text-slate-700">Source URL</label><input id="activity-url" type="url" value={form.url} onChange={(event) => update('url', event.target.value)} placeholder="https://…" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div></div>
-          <div><label htmlFor="activity-evidence" className="mb-1 block font-bold text-slate-700">Attach Evidence <span className="font-medium text-slate-400">(optional, max 25 MB)</span></label><label htmlFor="activity-evidence" className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-center transition-colors hover:bg-orange-50/50"><Upload className="h-6 w-6 text-[#FD6F3B]" /><span className="text-sm text-slate-500">{file ? <span className="flex items-center gap-1 font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{file.name}</span> : <><span className="font-bold text-[#FD6F3B]">Choose a file</span> (PDF, PNG, JPG, JPEG, DOCX or XLSX)</>}</span><input id="activity-evidence" type="file" accept={EVIDENCE_ACCEPT} onChange={handleFileChange} className="sr-only" /></label></div>
-          <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={onClose} disabled={busy} className="rounded-xl bg-slate-100 px-4 py-2 text-base font-bold text-slate-700 transition-all hover:bg-slate-200 disabled:opacity-50">Cancel</button><button type="submit" disabled={busy} className="flex items-center gap-2 rounded-xl bg-[#FD6F3B] px-5 py-2 text-base font-bold text-white shadow-md shadow-orange-500/20 transition-all hover:bg-[#E05320] disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{activity ? 'Save Changes' : 'Save Activity'}</button></div>
-        </form>
-      </div>
-    </div>
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(28_27_32_/_45%)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={activity ? 'Edit activity' : 'Log new activity'}>
+          <motion.div {...modalEnter} className="app-surface relative max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto !rounded-[var(--radius-panel)] p-6">
+            <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-full p-2 text-[var(--brand-subtle)] transition hover:bg-[var(--brand-surface-muted)] hover:text-[var(--brand-ink)]" aria-label="Close activity form">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="pr-8">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">{activity ? 'Edit Activity' : 'Log New Activity'}</h2>
+                <span className="chip chip-primary !text-[11px]">Real record</span>
+              </div>
+              <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Save the contribution to your academic record. You can attach proof now or later.</p>
+            </div>
+
+            {error && <Notice tone="error">{error}</Notice>}
+
+            <form onSubmit={submit} className="space-y-4">
+              <Field label="Activity Title *" htmlFor="activity-title">
+                <input id="activity-title" value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="e.g. Data Structures Lab curriculum redesign" className={inputClass} required />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Category *" htmlFor="activity-category">
+                  <select id="activity-category" value={form.category} onChange={(event) => update('category', event.target.value)} className={inputClass} required>
+                    {ACTIVITY_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Start Date *" htmlFor="activity-start">
+                  <input id="activity-start" type="date" value={form.start_date} onChange={(event) => update('start_date', event.target.value)} className={inputClass} required />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="End Date" htmlFor="activity-end" optional>
+                  <input id="activity-end" type="date" min={form.start_date || undefined} value={form.end_date} onChange={(event) => update('end_date', event.target.value)} className={inputClass} />
+                </Field>
+                <Field label="Academic Year" htmlFor="activity-year" optional>
+                  <input id="activity-year" value={form.academic_year} onChange={(event) => update('academic_year', event.target.value)} placeholder="2025-26" className={inputClass} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Organization" htmlFor="activity-org">
+                  <input id="activity-org" value={form.organization} onChange={(event) => update('organization', event.target.value)} placeholder="Institution or publisher" className={inputClass} />
+                </Field>
+                <Field label="Role" htmlFor="activity-role">
+                  <input id="activity-role" value={form.role} onChange={(event) => update('role', event.target.value)} placeholder="PI, mentor, participant…" className={inputClass} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Location" htmlFor="activity-location">
+                  <input id="activity-location" value={form.location} onChange={(event) => update('location', event.target.value)} placeholder="City or online" className={inputClass} />
+                </Field>
+                <Field label="Duration (hours)" htmlFor="activity-hours">
+                  <input id="activity-hours" type="number" min="0" step="0.5" value={form.duration_hours} onChange={(event) => update('duration_hours', event.target.value)} placeholder="e.g. 12" className={inputClass} />
+                </Field>
+              </div>
+
+              <Field label="Description / Impact Notes" htmlFor="activity-description">
+                <textarea id="activity-description" rows={3} value={form.description} onChange={(event) => update('description', event.target.value)} placeholder="Context, outcome, citation or notes" className={inputClass} />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="DOI" htmlFor="activity-doi">
+                  <input id="activity-doi" value={form.doi} onChange={(event) => update('doi', event.target.value)} placeholder="10.xxxx/xxxxx" className={inputClass} />
+                </Field>
+                <Field label="Source URL" htmlFor="activity-url">
+                  <input id="activity-url" type="url" value={form.url} onChange={(event) => update('url', event.target.value)} placeholder="https://…" className={inputClass} />
+                </Field>
+              </div>
+
+              <Field label="Attach Evidence" htmlFor="activity-evidence" optional>
+                <label htmlFor="activity-evidence" className="flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--brand-border)] bg-[var(--brand-canvas-soft)] p-4 text-center transition hover:border-[var(--brand-lavender-strong)] hover:bg-[var(--brand-primary-softer)]">
+                  <Upload className="h-5 w-5 text-[var(--brand-primary)]" />
+                  <span className="text-sm text-[var(--brand-muted)]">
+                    {file
+                      ? <span className="flex items-center gap-1 font-bold text-[var(--brand-mint-ink)]"><CheckCircle2 className="h-4 w-4" />{file.name}</span>
+                      : <><span className="font-bold text-[var(--brand-primary-hover)]">Choose a file</span> (PDF, PNG, JPG, JPEG, DOCX or XLSX, max 25 MB)</>}
+                  </span>
+                  <input id="activity-evidence" type="file" accept={EVIDENCE_ACCEPT} onChange={handleFileChange} className="sr-only" />
+                </label>
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 border-t border-[var(--brand-border-soft)] pt-4">
+                <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+                <Button variant="primary" type="submit" disabled={busy}>
+                  {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {activity ? 'Save Changes' : 'Save Activity'}
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

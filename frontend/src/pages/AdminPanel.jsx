@@ -10,7 +10,6 @@ import {
   ChevronRight,
   CircleHelp,
   ClipboardList,
-  Clock3,
   Download,
   Eye,
   FileText,
@@ -26,6 +25,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { subscribeToFacultyUpdates } from '../lib/realtime';
+import { Avatar, StatusBadge } from '../components/ui';
 
 const PAGE_SIZE = 25;
 const POLL_INTERVAL_MS = 5000;
@@ -166,11 +166,6 @@ function formatDate(value) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
-}
-
-function initials(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  return parts.slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
 }
 
 function numberValue(value) {
@@ -433,45 +428,12 @@ function canReviewAction(status, action) {
   return REVIEWABLE_STATUSES.has(normalized);
 }
 
-function Avatar({ name, src, size = 'w-10 h-10' }) {
-  if (src) {
-    return <img src={src} alt={name || 'Faculty member'} className={`${size} rounded-full object-cover border-2 border-orange-200`} />;
-  }
-  return (
-    <div className={`${size} rounded-full bg-orange-100 text-[#E05320] border-2 border-orange-200 flex items-center justify-center font-extrabold text-xs`} aria-hidden="true">
-      {initials(name)}
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  const normalized = normalizeStatus(status);
-  const isApproved = normalized === 'approved';
-  const isRejected = normalized === 'rejected';
-  const isReturned = RETURNED_STATUSES.has(normalized);
-  const className = isApproved
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    : isRejected || isReturned
-      ? 'bg-rose-50 text-rose-700 border-rose-200'
-      : normalized === 'submitted' || normalized === 'under_review' || normalized === 'pending' || normalized === 'pending_review'
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : 'bg-slate-100 text-slate-700 border-slate-200';
-  const Icon = isApproved ? CheckCircle2 : isRejected || isReturned ? AlertCircle : normalized ? Clock3 : CircleHelp;
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${className}`}>
-      <Icon className="w-3.5 h-3.5" />
-      {status ? humanize(status) : 'Status unavailable'}
-    </span>
-  );
-}
-
 function LoadingRows({ columns = 7, rows = 4 }) {
   return Array.from({ length: rows }, (_, rowIndex) => (
-    <tr key={rowIndex} className="animate-pulse">
+    <tr key={rowIndex}>
       {Array.from({ length: columns }, (_, columnIndex) => (
         <td key={columnIndex} className="py-4 px-4">
-          <div className="h-3 bg-slate-100 rounded w-3/4" />
+          <div className="skeleton h-3 w-3/4" />
         </td>
       ))}
     </tr>
@@ -482,11 +444,11 @@ function EmptyRow({ columns, children }) {
   return (
     <tr>
       <td colSpan={columns} className="py-14 px-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+        <div className="empty-state-icon mx-auto mb-3">
           <ClipboardList className="w-6 h-6" />
         </div>
-        <p className="font-bold text-slate-800">{children}</p>
-        <p className="text-sm text-slate-500 mt-1">Try changing the server-side filters or search.</p>
+        <p className="font-bold text-[var(--brand-ink)]">{children}</p>
+        <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">Try changing the server-side filters or search.</p>
       </td>
     </tr>
   );
@@ -495,7 +457,7 @@ function EmptyRow({ columns, children }) {
 function Pagination({ page, total, pageSize, onPageChange, disabled }) {
   const totalPages = Math.max(1, Math.ceil((numberValue(total) ?? 0) / pageSize));
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 mt-2 border-t border-slate-100 text-sm text-slate-500">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 mt-2 border-t border-[var(--brand-border-soft)] text-sm font-medium text-[var(--brand-muted)]">
       <span>
         Page {page} of {totalPages} · {numberValue(total) ?? 0} records
       </span>
@@ -504,17 +466,17 @@ function Pagination({ page, total, pageSize, onPageChange, disabled }) {
           type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={disabled || page <= 1}
-          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="btn btn-secondary btn-sm !p-2"
           aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="min-w-8 h-8 rounded-lg bg-[#FD6F3B] text-white font-bold flex items-center justify-center">{page}</span>
+        <span className="min-w-8 h-8 rounded-lg bg-[var(--brand-primary)] text-white font-bold flex items-center justify-center">{page}</span>
         <button
           type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={disabled || page >= totalPages}
-          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="btn btn-secondary btn-sm !p-2"
           aria-label="Next page"
         >
           <ChevronRight className="w-4 h-4" />
@@ -526,11 +488,11 @@ function Pagination({ page, total, pageSize, onPageChange, disabled }) {
 
 function MetricCard({ metric }) {
   return (
-    <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
-      <span className="text-sm text-slate-500 font-semibold block truncate" title={metric.label}>{metric.label}</span>
-      <div className="flex items-baseline justify-between gap-3 mt-1">
-        <span className="text-2xl font-extrabold text-slate-900">{metric.value ?? '—'}</span>
-        {metric.detail && <span className="text-xs text-slate-400 font-semibold text-right">{metric.detail}</span>}
+    <div className="app-surface p-5">
+      <span className="text-sm font-bold text-[var(--brand-muted)] block truncate" title={metric.label}>{metric.label}</span>
+      <div className="flex items-baseline justify-between gap-3 mt-2">
+        <span className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">{metric.value ?? '—'}</span>
+        {metric.detail && <span className="text-xs font-semibold text-[var(--brand-subtle)] text-right">{metric.detail}</span>}
       </div>
     </div>
   );
@@ -790,44 +752,38 @@ export default function AdminPanel() {
   return (
     <div className="space-y-6 pb-12">
       {notice && (
-        <div className={`flex items-start gap-3 p-4 rounded-2xl border ${notice.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`} role="status">
+        <div className={`notice ${notice.type === 'error' ? 'notice-error' : 'notice-success'}`} role="status">
           {notice.type === 'error' ? <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" /> : <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />}
-          <p className="font-semibold text-sm flex-1">{notice.message}</p>
+          <p className="flex-1">{notice.message}</p>
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      <div className="p-6 bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 rounded-3xl text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 shrink-0">
+      <div className="app-surface flex flex-col justify-between gap-4 !rounded-[var(--radius-panel)] p-6 md:flex-row md:items-center">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="icon-chip !h-12 !w-12 !rounded-2xl bg-[var(--brand-primary)] text-white shadow-[0_6px_16px_rgb(139_124_246_/_22%)]">
             <ShieldCheck className="w-6 h-6" />
-          </div>
+          </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-3xl font-extrabold tracking-tight">Institution Admin Console</h1>
-              <span className="px-2.5 py-0.5 bg-orange-500/30 text-orange-200 text-xs font-bold rounded-full border border-orange-400/30 uppercase truncate max-w-full">
-                {institutionName}
-              </span>
+              <h1 className="text-2xl font-extrabold tracking-tight text-[var(--brand-ink)] sm:text-3xl">Admin Action Center</h1>
+              <span className="chip chip-primary max-w-full truncate uppercase">{institutionName}</span>
             </div>
-            <p className="text-base text-slate-300 mt-1">
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">
               {adminName ? `Signed in as ${adminName}.` : 'Review institution-scoped faculty appraisals and submissions.'}
               {cycleName ? ` Current cycle: ${cycleName}.` : ''}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={refreshAll}
-          className="px-4 py-2.5 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-xl text-sm font-bold shadow-md shadow-orange-500/20 flex items-center gap-2 transition-all self-start md:self-auto"
-        >
+        <button type="button" onClick={refreshAll} className="btn btn-primary self-start md:self-auto">
           <RefreshCw className="w-4 h-4" />
           Refresh data
         </button>
       </div>
 
       {overviewState.error && (
-        <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-800 flex items-start gap-3" role="alert">
+        <div className="notice notice-error" role="alert">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-bold">Overview unavailable</p>
@@ -839,67 +795,67 @@ export default function AdminPanel() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {overviewState.loading && !overviewState.data
-          ? Array.from({ length: 4 }, (_, index) => <div key={index} className="h-24 bg-white rounded-2xl border border-slate-200/80 animate-pulse" />)
+          ? Array.from({ length: 4 }, (_, index) => <div key={index} className="skeleton h-24 !rounded-[var(--radius-card)]" />)
           : metrics.length > 0
             ? metrics.map((metric) => <MetricCard key={metric.key} metric={metric} />)
-            : <div className="sm:col-span-2 lg:col-span-4 p-5 bg-white rounded-2xl border border-slate-200/80 text-sm text-slate-500 flex items-center gap-2">
+            : <div className="app-surface flex items-center gap-2 p-5 text-sm font-medium text-[var(--brand-muted)] sm:col-span-2 lg:col-span-4">
               <CircleHelp className="w-4 h-4" /> No summary metrics were returned by the institution API.
             </div>}
       </div>
 
-      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+      <div className="app-surface space-y-4 p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Institution-scoped filters</h2>
-            <p className="text-sm text-slate-500 mt-1">Search, filtering, sorting, and pagination are handled by the API.</p>
+            <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Institution-scoped filters</h2>
+            <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">Search, filtering, sorting, and pagination are handled by the API.</p>
           </div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-            <Activity className="w-3.5 h-3.5 text-emerald-600" /> Live refresh enabled
+          <span className="chip chip-mint">
+            <Activity className="w-3.5 h-3.5" /> Live refresh enabled
           </span>
         </div>
 
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--brand-subtle)]" />
             <input
               type="search"
               value={filters.q}
               onChange={(event) => updateFilter('q', event.target.value)}
               placeholder="Search name, email, or employee code"
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20 focus:border-[#FD6F3B]"
+              className="input !pl-10"
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-            <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+          <label className="flex items-center gap-2 text-sm font-semibold text-[var(--brand-muted)]">
+            <Building2 className="w-4 h-4 text-[var(--brand-subtle)] shrink-0" />
             <select
               value={filters.department}
               onChange={(event) => updateFilter('department', event.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-2.5 outline-none font-semibold min-w-40"
+              className="input !w-auto min-w-40 font-semibold"
             >
               <option value="">All departments</option>
               {filterOptions.departments.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-            <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
+          <label className="flex items-center gap-2 text-sm font-semibold text-[var(--brand-muted)]">
+            <CalendarDays className="w-4 h-4 text-[var(--brand-subtle)] shrink-0" />
             <select
               value={filters.academic_year}
               onChange={(event) => updateFilter('academic_year', event.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-2.5 outline-none font-semibold min-w-36"
+              className="input !w-auto min-w-36 font-semibold"
             >
               <option value="">All academic years</option>
               {filterOptions.academicYears.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+          <label className="flex items-center gap-2 text-sm font-semibold text-[var(--brand-muted)]">
+            <Filter className="w-4 h-4 text-[var(--brand-subtle)] shrink-0" />
             <select
               value={filters.status}
               onChange={(event) => updateFilter('status', event.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-2.5 outline-none font-semibold min-w-36"
+              className="input !w-auto min-w-36 font-semibold"
             >
               <option value="">All statuses</option>
               {filterOptions.statuses.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -907,14 +863,14 @@ export default function AdminPanel() {
           </label>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-600">
-            <ArrowUpDown className="w-4 h-4 text-[#FD6F3B]" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-[var(--brand-border-soft)] pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--brand-muted)]">
+            <ArrowUpDown className="w-4 h-4 text-[var(--brand-primary)]" />
             <span>Sort by</span>
             <select
               value={filters.sort}
               onChange={(event) => updateFilter('sort', event.target.value)}
-              className="bg-[#FFF4F0] border border-orange-200 text-[#FD6F3B] rounded-xl px-3 py-2 outline-none font-bold"
+              className="input !w-auto !bg-[var(--brand-primary-softer)] !border-[var(--brand-lavender-strong)] font-bold !text-[var(--brand-primary-hover)]"
             >
               <option value="name">Name</option>
               <option value="employee_code">Employee code</option>
@@ -923,19 +879,19 @@ export default function AdminPanel() {
             <select
               value={filters.order}
               onChange={(event) => updateFilter('order', event.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 outline-none font-semibold"
+              className="input !w-auto font-semibold"
               aria-label="Sort order"
             >
               <option value="asc">Ascending</option>
               <option value="desc">Descending</option>
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <label className="flex items-center gap-2 text-sm font-semibold text-[var(--brand-muted)]">
             Rows per page
             <select
               value={filters.page_size}
               onChange={(event) => updateFilter('page_size', Number(event.target.value))}
-              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2 outline-none font-semibold"
+              className="input !w-auto font-semibold"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -945,59 +901,59 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <section className="app-surface overflow-hidden">
+        <div className="px-6 py-4 border-b border-[var(--brand-border-soft)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><UsersRound className="w-5 h-5 text-[#FD6F3B]" /> Faculty directory</h2>
-            <p className="text-sm text-slate-500 mt-1">Profiles visible to this institution.</p>
+            <h2 className="text-xl font-extrabold text-[var(--brand-ink)] flex items-center gap-2"><UsersRound className="w-5 h-5 text-[var(--brand-primary)]" /> Faculty directory</h2>
+            <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">Profiles visible to this institution.</p>
           </div>
-          {facultyState.error && <button type="button" onClick={() => loadFaculty()} className="text-sm font-bold text-[#FD6F3B] underline">Retry directory</button>}
+          {facultyState.error && <button type="button" onClick={() => loadFaculty()} className="text-sm font-bold text-[var(--brand-primary-hover)] underline">Retry directory</button>}
         </div>
         {facultyState.error && (
-          <div className="m-5 p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-800 flex items-start gap-3" role="alert">
+          <div className="m-5 notice notice-error" role="alert">
             <AlertCircle className="w-5 h-5 shrink-0" />
-            <p className="text-sm font-semibold">{facultyState.error}</p>
+            <p>{facultyState.error}</p>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse min-w-[900px]">
+        <div className="table-shell">
+          <table className="table min-w-[900px]">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-400 font-bold uppercase text-xs tracking-wider">
-                <th className="py-3.5 px-4">Faculty member</th>
-                <th className="py-3.5 px-4">Employee code</th>
-                <th className="py-3.5 px-4">Department & role</th>
-                <th className="py-3.5 px-4">Academic year</th>
-                <th className="py-3.5 px-4">Appraisal status</th>
-                <th className="py-3.5 px-4">Submission date</th>
-                <th className="py-3.5 px-4 text-right">Action</th>
+              <tr>
+                <th>Faculty member</th>
+                <th>Employee code</th>
+                <th>Department & role</th>
+                <th>Academic year</th>
+                <th>Appraisal status</th>
+                <th>Submission date</th>
+                <th className="text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {facultyState.loading && !facultyState.data ? <LoadingRows columns={7} /> : facultyRows.length === 0 ? <EmptyRow columns={7}>No faculty match these filters.</EmptyRow> : facultyRows.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="py-4 px-4">
+                <tr key={row.id}>
+                  <td>
                     <div className="flex items-center gap-3">
-                      <Avatar name={row.name} src={row.avatar} size="w-9 h-9" />
+                      <Avatar name={row.name} src={row.avatar} size="h-9 w-9" />
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-900 whitespace-nowrap">{row.name || 'Unnamed faculty member'}</p>
-                        <p className="text-xs text-slate-500 truncate max-w-56">{row.email || '—'}</p>
+                        <p className="font-bold text-[var(--brand-ink)] whitespace-nowrap">{row.name || 'Unnamed faculty member'}</p>
+                        <p className="text-xs font-medium text-[var(--brand-muted)] truncate max-w-56">{row.email || '—'}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-4 font-mono text-slate-700 font-semibold">{row.employeeCode || '—'}</td>
-                  <td className="py-4 px-4 text-slate-600">
-                    <p className="font-semibold text-slate-800">{row.department || '—'}</p>
-                    <p className="text-xs text-slate-400">{row.designation || '—'}</p>
+                  <td className="font-mono font-semibold text-[var(--brand-text)]">{row.employeeCode || '—'}</td>
+                  <td>
+                    <p className="font-semibold text-[var(--brand-ink)]">{row.department || '—'}</p>
+                    <p className="text-xs font-medium text-[var(--brand-subtle)]">{row.designation || '—'}</p>
                   </td>
-                  <td className="py-4 px-4 text-slate-500">{row.academicYear || '—'}</td>
-                  <td className="py-4 px-4"><StatusBadge status={row.status} /></td>
-                  <td className="py-4 px-4 text-slate-500">{formatDate(row.submissionDate)}</td>
-                  <td className="py-4 px-4 text-right">
+                  <td className="text-[var(--brand-muted)]">{row.academicYear || '—'}</td>
+                  <td><StatusBadge status={row.status} /></td>
+                  <td className="text-[var(--brand-muted)]">{formatDate(row.submissionDate)}</td>
+                  <td className="text-right">
                     {row.submissionId ? (
-                      <button type="button" onClick={() => openSubmission({ ...row, id: row.submissionId })} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-all">
+                      <button type="button" onClick={() => openSubmission({ ...row, id: row.submissionId })} className="btn btn-soft btn-sm">
                         <Eye className="w-3.5 h-3.5" /> Review
                       </button>
-                    ) : <span className="text-xs text-slate-400">No submission</span>}
+                    ) : <span className="text-xs font-medium text-[var(--brand-subtle)]">No submission</span>}
                   </td>
                 </tr>
               ))}
@@ -1009,68 +965,68 @@ export default function AdminPanel() {
         </div>
       </section>
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <section className="app-surface overflow-hidden">
+        <div className="px-6 py-4 border-b border-[var(--brand-border-soft)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><FileText className="w-5 h-5 text-[#FD6F3B]" /> Appraisal submissions</h2>
-            <p className="text-sm text-slate-500 mt-1">Review the current institution-scoped submission queue.</p>
+            <h2 className="text-xl font-extrabold text-[var(--brand-ink)] flex items-center gap-2"><FileText className="w-5 h-5 text-[var(--brand-primary)]" /> Appraisal submissions</h2>
+            <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">Review the current institution-scoped submission queue.</p>
           </div>
-          {submissionsState.error && <button type="button" onClick={() => loadSubmissions()} className="text-sm font-bold text-[#FD6F3B] underline">Retry queue</button>}
+          {submissionsState.error && <button type="button" onClick={() => loadSubmissions()} className="text-sm font-bold text-[var(--brand-primary-hover)] underline">Retry queue</button>}
         </div>
         {submissionsState.error && (
-          <div className="m-5 p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-800 flex items-start gap-3" role="alert">
+          <div className="m-5 notice notice-error" role="alert">
             <AlertCircle className="w-5 h-5 shrink-0" />
-            <p className="text-sm font-semibold">{submissionsState.error}</p>
+            <p>{submissionsState.error}</p>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse min-w-[980px]">
+        <div className="table-shell">
+          <table className="table min-w-[980px]">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-400 font-bold uppercase text-xs tracking-wider">
-                <th className="py-3.5 px-4">Faculty member</th>
-                <th className="py-3.5 px-4">Employee code</th>
-                <th className="py-3.5 px-4">Department</th>
-                <th className="py-3.5 px-4">Academic year</th>
-                <th className="py-3.5 px-4">Submission date</th>
-                <th className="py-3.5 px-4">Readiness / evidence</th>
-                <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+              <tr>
+                <th>Faculty member</th>
+                <th>Employee code</th>
+                <th>Department</th>
+                <th>Academic year</th>
+                <th>Submission date</th>
+                <th>Readiness / evidence</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {submissionsState.loading && !submissionsState.data ? <LoadingRows columns={8} /> : submissionRows.length === 0 ? <EmptyRow columns={8}>No submissions match these filters.</EmptyRow> : submissionRows.map((row) => {
                 const readiness = numberValue(row.readiness);
                 const evidence = numberValue(row.evidenceCompleteness);
                 return (
-                  <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-4 px-4">
+                  <tr key={row.id}>
+                    <td>
                       <div className="flex items-center gap-3">
-                        <Avatar name={row.name} src={row.avatar} size="w-9 h-9" />
+                        <Avatar name={row.name} src={row.avatar} size="h-9 w-9" />
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-900 whitespace-nowrap">{row.name || 'Unnamed faculty member'}</p>
-                          <p className="text-xs text-slate-500 truncate max-w-56">{row.email || '—'}</p>
+                          <p className="font-bold text-[var(--brand-ink)] whitespace-nowrap">{row.name || 'Unnamed faculty member'}</p>
+                          <p className="text-xs font-medium text-[var(--brand-muted)] truncate max-w-56">{row.email || '—'}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-4 font-mono text-slate-700 font-semibold">{row.employeeCode || '—'}</td>
-                    <td className="py-4 px-4 text-slate-600">{row.department || '—'}</td>
-                    <td className="py-4 px-4 text-slate-500">{row.academicYear || '—'}</td>
-                    <td className="py-4 px-4 text-slate-500">{formatDate(row.submissionDate)}</td>
-                    <td className="py-4 px-4 min-w-40">
+                    <td className="font-mono font-semibold text-[var(--brand-text)]">{row.employeeCode || '—'}</td>
+                    <td className="text-[var(--brand-text)]">{row.department || '—'}</td>
+                    <td className="text-[var(--brand-muted)]">{row.academicYear || '—'}</td>
+                    <td className="text-[var(--brand-muted)]">{formatDate(row.submissionDate)}</td>
+                    <td className="min-w-40">
                       {readiness !== null || evidence !== null ? (
                         <div className="space-y-1.5">
-                          {readiness !== null && <div><div className="flex justify-between text-xs text-slate-500"><span>Readiness</span><span>{readiness}%</span></div><div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-[#FD6F3B] rounded-full" style={{ width: `${Math.max(0, Math.min(100, readiness))}%` }} /></div></div>}
-                          {evidence !== null && <div><div className="flex justify-between text-xs text-slate-500"><span>Evidence</span><span>{evidence}%</span></div><div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.max(0, Math.min(100, evidence))}%` }} /></div></div>}
+                          {readiness !== null && <div><div className="flex justify-between text-xs font-medium text-[var(--brand-muted)]"><span>Readiness</span><span>{readiness}%</span></div><div className="progress-track !h-1.5"><div className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, readiness))}%` }} /></div></div>}
+                          {evidence !== null && <div><div className="flex justify-between text-xs font-medium text-[var(--brand-muted)]"><span>Evidence</span><span>{evidence}%</span></div><div className="progress-track !h-1.5"><div className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, evidence))}%`, background: 'var(--brand-success)' }} /></div></div>}
                         </div>
-                      ) : <span className="text-slate-400">—</span>}
+                      ) : <span className="text-[var(--brand-subtle)]">—</span>}
                     </td>
-                    <td className="py-4 px-4"><StatusBadge status={row.status} /></td>
-                    <td className="py-4 px-4">
+                    <td><StatusBadge status={row.status} /></td>
+                    <td>
                       <div className="flex items-center justify-end gap-2">
-                        <button type="button" onClick={() => openSubmission(row)} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-all">
+                        <button type="button" onClick={() => openSubmission(row)} className="btn btn-soft btn-sm">
                           <Eye className="w-3.5 h-3.5" /> Inspect
                         </button>
-                        <button type="button" onClick={() => downloadPdf(row)} disabled={pdfState.id === row.id} className="px-2.5 py-1.5 bg-[#FFF4F0] hover:bg-orange-100 text-[#E05320] border border-orange-200 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-wait">
+                        <button type="button" onClick={() => downloadPdf(row)} disabled={pdfState.id === row.id} className="btn btn-secondary btn-sm disabled:cursor-wait">
                           {pdfState.id === row.id ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} PDF
                         </button>
                       </div>
@@ -1087,78 +1043,78 @@ export default function AdminPanel() {
       </section>
 
       {selectedSubmission && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Submission review">
-          <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 relative max-h-[92vh] overflow-y-auto">
-            <button type="button" onClick={closeSubmission} className="absolute top-4 right-4 z-10 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full" aria-label="Close submission review">
+        <div className="fixed inset-0 z-50 bg-[rgb(28_27_32_/_45%)] backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Submission review">
+          <div className="app-surface !rounded-[var(--radius-panel)] max-w-4xl w-full relative max-h-[92vh] overflow-y-auto">
+            <button type="button" onClick={closeSubmission} className="absolute top-4 right-4 z-10 rounded-full p-2 text-[var(--brand-subtle)] transition hover:bg-[var(--brand-surface-muted)] hover:text-[var(--brand-ink)]" aria-label="Close submission review">
               <X className="w-5 h-5" />
             </button>
 
             {detailState.loading && !detailState.data ? (
-              <div className="p-8 space-y-5 animate-pulse">
-                <div className="h-8 bg-slate-100 rounded w-2/3" />
-                <div className="h-4 bg-slate-100 rounded w-1/3" />
-                <div className="h-32 bg-slate-100 rounded-2xl" />
+              <div className="p-8 space-y-5">
+                <div className="skeleton h-8 w-2/3" />
+                <div className="skeleton h-4 w-1/3" />
+                <div className="skeleton h-32 !rounded-[var(--radius-card)]" />
               </div>
             ) : detailState.error ? (
               <div className="p-8 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3"><AlertCircle className="w-6 h-6" /></div>
-                <h2 className="text-xl font-bold text-slate-900">Submission details unavailable</h2>
-                <p className="text-sm text-rose-700 mt-2" role="alert">{detailState.error}</p>
-                <button type="button" onClick={() => loadDetail(selectedSubmission)} className="mt-5 px-4 py-2 rounded-xl bg-[#FD6F3B] text-white text-sm font-bold">Retry</button>
+                <div className="empty-state-icon mx-auto mb-3" style={{ background: 'var(--brand-danger-soft)', color: 'var(--brand-rose-ink)' }}><AlertCircle className="w-6 h-6" /></div>
+                <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Submission details unavailable</h2>
+                <p className="text-sm font-semibold text-[var(--brand-rose-ink)] mt-2" role="alert">{detailState.error}</p>
+                <button type="button" onClick={() => loadDetail(selectedSubmission)} className="btn btn-primary mt-5">Retry</button>
               </div>
             ) : detail ? (
               <div className="p-6 sm:p-8 space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-5 pr-8">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[var(--brand-border-soft)] pb-5 pr-8">
                   <div className="flex items-center gap-4 min-w-0">
-                    <Avatar name={detail.profile?.name || detail.name} src={detail.profile?.avatar || detail.avatar} size="w-14 h-14" />
+                    <Avatar name={detail.profile?.name || detail.name} src={detail.profile?.avatar || detail.avatar} size="h-14 w-14" />
                     <div className="min-w-0">
-                      <h2 className="text-2xl font-extrabold text-slate-900 truncate">{detail.profile?.name || detail.name || 'Unnamed faculty member'}</h2>
-                      <p className="text-sm text-slate-500 mt-1">{detail.profile?.designation || detail.designation || '—'} · {detail.profile?.department || detail.department || '—'}</p>
+                      <h2 className="text-2xl font-extrabold text-[var(--brand-ink)] truncate">{detail.profile?.name || detail.name || 'Unnamed faculty member'}</h2>
+                      <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">{detail.profile?.designation || detail.designation || '—'} · {detail.profile?.department || detail.department || '—'}</p>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-md">{detail.profile?.employeeCode || detail.employeeCode || '—'}</span>
+                        <span className="chip chip-surface font-mono">{detail.profile?.employeeCode || detail.employeeCode || '—'}</span>
                         <StatusBadge status={detail.status} />
                       </div>
                     </div>
                   </div>
-                  <button type="button" onClick={() => downloadPdf(detail)} disabled={pdfState.id === detail.id} className="px-3 py-2 bg-[#FFF4F0] hover:bg-orange-100 text-[#E05320] border border-orange-200 rounded-xl text-sm font-bold inline-flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-wait">
+                  <button type="button" onClick={() => downloadPdf(detail)} disabled={pdfState.id === detail.id} className="btn btn-secondary shrink-0 disabled:cursor-wait">
                     {pdfState.id === detail.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download PDF
                   </button>
                 </div>
 
-                {pdfState.error && <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-sm font-semibold" role="alert">{pdfState.error}</div>}
+                {pdfState.error && <div className="notice notice-error" role="alert">{pdfState.error}</div>}
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200"><span className="text-slate-400 font-semibold block">Submitted</span><span className="font-bold text-slate-800">{formatDate(detail.submissionDate)}</span></div>
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200"><span className="text-slate-400 font-semibold block">Academic year</span><span className="font-bold text-slate-800">{detail.academicYear || '—'}</span></div>
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200"><span className="text-slate-400 font-semibold block">Activities</span><span className="font-bold text-slate-800">{detail.activityCount ?? '—'}</span></div>
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200"><span className="text-slate-400 font-semibold block">Current status</span><span className="font-bold text-slate-800">{detail.status ? humanize(detail.status) : '—'}</span></div>
+                  <div className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3"><span className="block text-xs font-semibold text-[var(--brand-subtle)]">Submitted</span><span className="font-bold text-[var(--brand-ink)]">{formatDate(detail.submissionDate)}</span></div>
+                  <div className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3"><span className="block text-xs font-semibold text-[var(--brand-subtle)]">Academic year</span><span className="font-bold text-[var(--brand-ink)]">{detail.academicYear || '—'}</span></div>
+                  <div className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3"><span className="block text-xs font-semibold text-[var(--brand-subtle)]">Activities</span><span className="font-bold text-[var(--brand-ink)]">{detail.activityCount ?? '—'}</span></div>
+                  <div className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3"><span className="block text-xs font-semibold text-[var(--brand-subtle)]">Current status</span><span className="font-bold text-[var(--brand-ink)]">{detail.status ? humanize(detail.status) : '—'}</span></div>
                 </div>
 
                 <section className="space-y-3">
-                  <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-[#FD6F3B]" /><h3 className="text-lg font-bold text-slate-800">Sections and activities</h3></div>
+                  <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-[var(--brand-primary)]" /><h3 className="text-lg font-extrabold text-[var(--brand-ink)]">Sections and activities</h3></div>
                   {detail.sections.length === 0 ? (
-                    <div className="p-5 rounded-2xl border border-dashed border-slate-300 text-sm text-slate-500">No section or activity data was returned for this submission.</div>
+                    <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--brand-border)] p-5 text-sm font-medium text-[var(--brand-muted)]">No section or activity data was returned for this submission.</div>
                   ) : detail.sections.map((section) => (
-                    <div key={section.id} className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-3">
+                    <div key={section.id} className="space-y-3 rounded-[var(--radius-card)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-4">
                       <div>
-                        <h4 className="font-bold text-slate-900">{section.title}</h4>
-                        {section.description && <p className="text-sm text-slate-500 mt-1">{section.description}</p>}
+                        <h4 className="font-bold text-[var(--brand-ink)]">{section.title}</h4>
+                        {section.description && <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">{section.description}</p>}
                       </div>
-                      {section.activities.length === 0 ? <p className="text-sm text-slate-400">No activities in this section.</p> : (
+                      {section.activities.length === 0 ? <p className="text-sm font-medium text-[var(--brand-subtle)]">No activities in this section.</p> : (
                         <div className="space-y-2">
                           {section.activities.map((activity) => (
-                            <div key={activity.id} className="p-3 bg-white rounded-xl border border-slate-200">
+                            <div key={activity.id} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] p-3">
                               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-bold text-slate-800">{activity.title || 'Untitled activity'}</p>
-                                  {activity.description && <p className="text-sm text-slate-500 mt-1">{activity.description}</p>}
+                                  <p className="font-bold text-[var(--brand-ink)]">{activity.title || 'Untitled activity'}</p>
+                                  {activity.description && <p className="text-sm font-medium text-[var(--brand-muted)] mt-1">{activity.description}</p>}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 shrink-0">
-                                  {activity.category && <span className="px-2 py-1 rounded-full bg-orange-50 text-orange-800 font-bold">{humanize(activity.category)}</span>}
+                                <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[var(--brand-muted)] shrink-0">
+                                  {activity.category && <span className="chip chip-primary !text-[11px]">{humanize(activity.category)}</span>}
                                   {activity.date && <span>{formatDate(activity.date)}</span>}
                                 </div>
                               </div>
-                              {activity.evidence.length > 0 && <div className="flex flex-wrap gap-2 mt-3">{activity.evidence.map((evidence) => evidence.url ? <a key={evidence.id} href={evidence.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#E05320] hover:underline"><FileText className="w-3.5 h-3.5" />{evidence.name}</a> : <span key={evidence.id} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500"><FileText className="w-3.5 h-3.5" />{evidence.name}</span>)}</div>}
+                              {activity.evidence.length > 0 && <div className="flex flex-wrap gap-2 mt-3">{activity.evidence.map((evidence) => evidence.url ? <a key={evidence.id} href={evidence.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-[var(--brand-primary-hover)] hover:underline"><FileText className="w-3.5 h-3.5" />{evidence.name}</a> : <span key={evidence.id} className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-muted)]"><FileText className="w-3.5 h-3.5" />{evidence.name}</span>)}</div>}
                             </div>
                           ))}
                         </div>
@@ -1168,29 +1124,29 @@ export default function AdminPanel() {
                 </section>
 
                 <section className="space-y-3">
-                  <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-[#FD6F3B]" /><h3 className="text-lg font-bold text-slate-800">Review history</h3></div>
-                  {detail.reviews.length === 0 ? <div className="p-5 rounded-2xl border border-dashed border-slate-300 text-sm text-slate-500">No review history was returned for this submission.</div> : <div className="space-y-2">{detail.reviews.map((review) => <div key={review.id} className="p-3 rounded-xl border border-slate-200 bg-white"><div className="flex flex-wrap justify-between gap-2"><span className="font-bold text-slate-800">{humanize(review.action)}</span><span className="text-xs text-slate-500">{review.reviewer || 'Reviewer'} · {formatDate(review.createdAt)}</span></div>{review.comment && <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{review.comment}</p>}</div>)}</div>}
+                  <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-[var(--brand-primary)]" /><h3 className="text-lg font-extrabold text-[var(--brand-ink)]">Review history</h3></div>
+                  {detail.reviews.length === 0 ? <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--brand-border)] p-5 text-sm font-medium text-[var(--brand-muted)]">No review history was returned for this submission.</div> : <div className="space-y-2">{detail.reviews.map((review) => <div key={review.id} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] p-3"><div className="flex flex-wrap justify-between gap-2"><span className="font-bold text-[var(--brand-ink)]">{humanize(review.action)}</span><span className="text-xs font-medium text-[var(--brand-muted)]">{review.reviewer || 'Reviewer'} · {formatDate(review.createdAt)}</span></div>{review.comment && <p className="text-sm font-medium text-[var(--brand-muted)] mt-2 whitespace-pre-wrap">{review.comment}</p>}</div>)}</div>}
                 </section>
 
-                <section className="border-t border-slate-100 pt-5 space-y-3">
-                  <div><h3 className="text-lg font-bold text-slate-800">Add review comment</h3><p className="text-sm text-slate-500 mt-1">The backend validates the current status and institution scope before applying any action.</p></div>
+                <section className="border-t border-[var(--brand-border-soft)] pt-5 space-y-3">
+                  <div><h3 className="text-lg font-extrabold text-[var(--brand-ink)]">Add review comment</h3><p className="text-sm font-medium text-[var(--brand-muted)] mt-1">The backend validates the current status and institution scope before applying any action.</p></div>
                   <textarea
                     value={reviewComment}
                     onChange={(event) => setReviewComment(event.target.value)}
                     rows={3}
                     placeholder="Write a comment for the faculty member or review history"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 resize-y focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20 focus:border-[#FD6F3B]"
+                    className="input resize-y"
                   />
-                  {reviewState.error && <p className="text-sm text-rose-700 font-semibold" role="alert">{reviewState.error}</p>}
+                  {reviewState.error && <p className="text-sm font-semibold text-[var(--brand-rose-ink)]" role="alert">{reviewState.error}</p>}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <button type="button" onClick={() => submitReview('comment')} disabled={!canReviewAction(activeStatus, 'comment') || Boolean(reviewState.action)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><Send className="w-4 h-4" /> Post comment</button>
+                    <button type="button" onClick={() => submitReview('comment')} disabled={!canReviewAction(activeStatus, 'comment') || Boolean(reviewState.action)} className="btn btn-secondary"><Send className="w-4 h-4" /> Post comment</button>
                     <div className="flex flex-wrap items-center gap-2 justify-end">
-                      <button type="button" onClick={() => submitReview('return')} disabled={!canReviewAction(activeStatus, 'return') || Boolean(reviewState.action)} className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">Request changes</button>
-                      <button type="button" onClick={() => submitReview('reject')} disabled={!canReviewAction(activeStatus, 'reject') || Boolean(reviewState.action)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-sm font-bold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">Reject</button>
-                      <button type="button" onClick={() => submitReview('approve')} disabled={!canReviewAction(activeStatus, 'approve') || Boolean(reviewState.action)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">{reviewState.action === 'approve' ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Approve</button>
+                      <button type="button" onClick={() => submitReview('return')} disabled={!canReviewAction(activeStatus, 'return') || Boolean(reviewState.action)} className="btn btn-attention">Request changes</button>
+                      <button type="button" onClick={() => submitReview('reject')} disabled={!canReviewAction(activeStatus, 'reject') || Boolean(reviewState.action)} className="btn btn-destructive">Reject</button>
+                      <button type="button" onClick={() => submitReview('approve')} disabled={!canReviewAction(activeStatus, 'approve') || Boolean(reviewState.action)} className="btn btn-success-solid">{reviewState.action === 'approve' ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Approve</button>
                     </div>
                   </div>
-                  {!canReviewAction(activeStatus, 'approve') && <p className="text-xs text-slate-500">Review actions are disabled for the current submission status.</p>}
+                  {!canReviewAction(activeStatus, 'approve') && <p className="text-xs font-medium text-[var(--brand-muted)]">Review actions are disabled for the current submission status.</p>}
                 </section>
               </div>
             ) : null}

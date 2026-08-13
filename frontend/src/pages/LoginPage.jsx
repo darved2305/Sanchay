@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
-  AlertCircle,
   ArrowRight,
-  CheckCircle2,
   Cloud,
   Eye,
   EyeOff,
@@ -14,6 +14,10 @@ import {
   User,
   Users,
 } from 'lucide-react';
+import Logo from '../components/Logo';
+import { Field, Notice } from '../components/ui';
+import { Sparkle, Squiggle } from '../components/Doodles';
+import { heroReveal, heroRevealDelayed } from '../lib/motion';
 import { api } from '../lib/api';
 import { getRuntimeConfig, runtimeConfigMessage } from '../lib/config';
 import {
@@ -23,17 +27,14 @@ import {
 } from '../lib/supabase';
 
 function FieldError({ children }) {
-  return children ? <p className="mt-1 text-sm font-semibold text-red-600">{children}</p> : null;
+  return children ? <p className="mt-1 text-sm font-semibold text-[var(--brand-rose-ink)]">{children}</p> : null;
 }
 
-function ErrorBanner({ children }) {
-  return children ? (
-    <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-      <span>{children}</span>
-    </div>
-  ) : null;
-}
+const benefitCards = [
+  { icon: Cloud, tone: 'chip-lavender', title: 'Auto-save evidence', text: 'Never lose your progress.', className: '-left-4 top-6 sm:-left-8' },
+  { icon: Users, tone: 'chip-mint', title: 'Role-based access', text: 'Secure. Relevant. For everyone.', className: '-right-4 top-1/2 sm:-right-8 -translate-y-1/2' },
+  { icon: FileCheck, tone: 'chip-butter', title: 'Appraisal ready', text: 'Organized. Complete. Always ready.', className: '-bottom-2 left-2 sm:-left-4' },
+];
 
 export default function LoginPage({ initialMode = 'signin', onLogin }) {
   const [activeTab, setActiveTab] = useState(initialMode === 'register' ? 'register' : 'signin');
@@ -160,129 +161,180 @@ export default function LoginPage({ initialMode = 'signin', onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F7] p-4 font-sans sm:p-6 lg:p-8">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/60 lg:min-h-0 lg:flex-row">
+    <div className="flex min-h-screen items-stretch bg-[var(--brand-canvas)] p-4 antialiased sm:p-6 lg:p-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] shadow-[var(--shadow-raised)] lg:flex-row">
+        {/* Form column */}
         <div className="flex w-full flex-col justify-between p-7 sm:p-10 lg:w-1/2 lg:p-12">
           <div>
-            <div className="mb-8 flex items-center gap-3.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#FD6F3B] via-orange-500 to-amber-500 shadow-md shadow-orange-500/20">
-                <div className="h-5 w-5 rotate-45 rounded-md border-2 border-white/90 border-t-transparent" />
-              </div>
-              <div>
-                <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sanchaya</span>
-                <p className="text-base font-semibold text-slate-500">Your Impact. Clearly.</p>
-              </div>
-            </div>
+            <Link to="/" aria-label="Back to Sanchaya home" className="inline-flex"><Logo /></Link>
 
             {!config.isConfigured && (
-              <ErrorBanner>{config.missing.length ? `Configuration required: ${config.missing.join(', ')}.` : 'Configuration required.'}</ErrorBanner>
+              <Notice tone="error" className="mt-6">{config.missing.length ? `Configuration required: ${config.missing.join(', ')}.` : 'Configuration required.'}</Notice>
             )}
 
-            <div className="mb-6 flex rounded-2xl bg-slate-100 p-1">
+            <div className="mb-6 mt-8 flex rounded-[var(--radius-card)] bg-[var(--brand-surface-muted)] p-1" role="tablist" aria-label="Authentication mode">
               {['signin', 'register'].map((tab) => (
                 <button
                   key={tab}
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab}
                   onClick={() => switchTab(tab)}
-                  className={`flex-1 rounded-xl py-3 text-base font-bold transition-all ${activeTab === tab ? 'bg-orange-100 text-orange-950 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`flex-1 rounded-[var(--radius-control)] py-2.5 text-sm font-bold transition-all ${
+                    activeTab === tab
+                      ? 'bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)] shadow-[var(--shadow-soft)]'
+                      : 'text-[var(--brand-muted)] hover:text-[var(--brand-ink)]'
+                  }`}
                 >
                   {tab === 'signin' ? 'Sign In' : 'Create Account'}
                 </button>
               ))}
             </div>
 
-            <ErrorBanner>{error}</ErrorBanner>
-            {notice && <div className="mb-4 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{notice}</div>}
+            {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+            {notice && <Notice tone="success" className="mb-4">{notice}</Notice>}
 
             {activeTab === 'signin' ? (
               <div>
                 <div className="mb-6">
-                  <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Welcome back!</h1>
-                  <div className="mb-2.5 mt-1.5 h-1.5 w-20 rounded-full bg-[#FD6F3B]" />
-                  <p className="text-base font-medium text-slate-600">Sign in to continue your self-appraisal and showcase your impact.</p>
+                  <h1 className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">Welcome back!</h1>
+                  <div className="mb-2.5 mt-2 h-1.5 w-20 rounded-full bg-[var(--brand-primary)]" />
+                  <p className="text-[15px] font-medium text-[var(--brand-muted)]">Sign in to continue your self-appraisal and showcase your impact.</p>
                 </div>
 
                 <form onSubmit={handleSignIn} className="space-y-4">
-                  <div>
-                    <label htmlFor="signin-email" className="mb-1.5 block text-base font-bold text-slate-700">Institutional Email</label>
+                  <Field label="Institutional Email" htmlFor="signin-email">
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                      <input id="signin-email" type="email" value={signInEmail} onChange={(event) => setSignInEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-base font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required />
+                      <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--brand-subtle)]" />
+                      <input id="signin-email" type="email" value={signInEmail} onChange={(event) => setSignInEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="input !py-3 !pl-11" required />
                     </div>
                     <FieldError>{fieldErrors.email}</FieldError>
-                  </div>
-                  <div>
-                    <label htmlFor="signin-password" className="mb-1.5 block text-base font-bold text-slate-700">Password</label>
+                  </Field>
+                  <Field label="Password" htmlFor="signin-password">
                     <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                      <input id="signin-password" type={showSignInPassword ? 'text' : 'password'} value={signInPassword} onChange={(event) => setSignInPassword(event.target.value)} placeholder="Enter your password" className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-11 text-base font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required />
-                      <button type="button" onClick={() => setShowSignInPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#FD6F3B]" aria-label={showSignInPassword ? 'Hide password' : 'Show password'}>
+                      <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--brand-subtle)]" />
+                      <input id="signin-password" type={showSignInPassword ? 'text' : 'password'} value={signInPassword} onChange={(event) => setSignInPassword(event.target.value)} placeholder="Enter your password" className="input !py-3 !pl-11 !pr-11" required />
+                      <button type="button" onClick={() => setShowSignInPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-[var(--brand-subtle)] transition hover:text-[var(--brand-primary)]" aria-label={showSignInPassword ? 'Hide password' : 'Show password'}>
                         {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                  </Field>
+                  <div className="flex items-center justify-end text-sm">
+                    <button type="button" onClick={handleReset} disabled={busy || resetSent} className="font-bold text-[var(--brand-primary-hover)] hover:underline disabled:opacity-50">Forgot Password?</button>
                   </div>
-                  <div className="flex items-center justify-end text-base">
-                    <button type="button" onClick={handleReset} disabled={busy || resetSent} className="font-bold text-[#FD6F3B] hover:text-[#E05320] disabled:opacity-50">Forgot Password?</button>
-                  </div>
-                  <button type="submit" disabled={busy || !config.isConfigured} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FD6F3B] py-3.5 text-base font-bold text-white shadow-md shadow-orange-500/25 transition-all hover:bg-[#E05320] disabled:cursor-not-allowed disabled:opacity-50">
-                    {busy ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <><span>Sign In</span><ArrowRight className="h-4.5 w-4.5" /></>}
+                  <button type="submit" disabled={busy || !config.isConfigured} className="btn btn-primary btn-lg w-full">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>Sign In</span><ArrowRight className="h-4 w-4" /></>}
                   </button>
                 </form>
 
                 <div className="relative my-6 text-center">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
-                  <span className="relative bg-white px-3.5 text-base font-semibold text-slate-400">or continue with</span>
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--brand-border-soft)]" /></div>
+                  <span className="relative bg-[var(--brand-surface)] px-3.5 text-sm font-semibold text-[var(--brand-subtle)]">or continue with</span>
                 </div>
-                <button type="button" disabled className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-400 disabled:cursor-not-allowed disabled:opacity-70">
-                  <span className="text-lg font-extrabold text-slate-400">G</span><span>Google sign-in · Coming soon</span>
+                <button type="button" disabled className="btn btn-secondary w-full !text-[var(--brand-subtle)]" title="Google sign-in is not enabled yet">
+                  <span className="text-base font-extrabold">G</span><span>Google sign-in · Coming soon</span>
                 </button>
-                <p className="mt-3 text-center text-xs font-medium text-slate-400">Email and password are available today.</p>
+                <p className="mt-3 text-center text-xs font-medium text-[var(--brand-subtle)]">Email and password are available today.</p>
+                <p className="mt-5 text-center text-sm font-medium text-[var(--brand-muted)]">
+                  New to Sanchaya? <button type="button" onClick={() => switchTab('register')} className="font-bold text-[var(--brand-primary-hover)] hover:underline">Create an account</button>
+                </p>
               </div>
             ) : (
               <div>
                 <div className="mb-6">
-                  <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Join Sanchaya</h1>
-                  <div className="mb-2.5 mt-1.5 h-1.5 w-20 rounded-full bg-[#FD6F3B]" />
-                  <p className="text-base font-medium text-slate-600">Create your faculty profile to automate appraisals and evidence collection.</p>
+                  <h1 className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">Join Sanchaya</h1>
+                  <div className="mb-2.5 mt-2 h-1.5 w-20 rounded-full bg-[var(--brand-primary)]" />
+                  <p className="text-[15px] font-medium text-[var(--brand-muted)]">Create your faculty profile to automate appraisals and evidence collection.</p>
                 </div>
-                <form onSubmit={handleRegister} className="space-y-4 text-base">
-                  <div>
-                    <label htmlFor="reg-name" className="mb-1 block font-bold text-slate-700">Full Name</label>
-                    <div className="relative"><User className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-name" value={regFullName} onChange={(event) => setRegFullName(event.target.value)} placeholder="Your full name" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-4 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div>
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <Field label="Full Name" htmlFor="reg-name">
+                    <div className="relative"><User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--brand-subtle)]" /><input id="reg-name" value={regFullName} onChange={(event) => setRegFullName(event.target.value)} placeholder="Your full name" className="input !pl-11" required /></div>
                     <FieldError>{fieldErrors.full_name}</FieldError>
-                  </div>
-                  <div>
-                    <label htmlFor="reg-email" className="mb-1 block font-bold text-slate-700">Institutional Email</label>
-                    <div className="relative"><Mail className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-email" type="email" value={regEmail} onChange={(event) => setRegEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-4 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /></div>
+                  </Field>
+                  <Field label="Institutional Email" htmlFor="reg-email">
+                    <div className="relative"><Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--brand-subtle)]" /><input id="reg-email" type="email" value={regEmail} onChange={(event) => setRegEmail(event.target.value)} placeholder="you@yourinstitution.edu" className="input !pl-11" required /></div>
                     <FieldError>{fieldErrors.email}</FieldError>
-                  </div>
+                  </Field>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div><label htmlFor="reg-institution" className="mb-1 block font-bold text-slate-700">Institution</label><input id="reg-institution" value={regInstitution} onChange={(event) => setRegInstitution(event.target.value)} placeholder="Your university" className="w-full rounded-2xl border border-slate-200 px-3.5 py-2.5 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><FieldError>{fieldErrors.institution}</FieldError></div>
-                    <div><label htmlFor="reg-code" className="mb-1 block font-bold text-slate-700">Employee Code <span className="font-medium text-slate-400">(optional)</span></label><input id="reg-code" value={regEmpCode} onChange={(event) => setRegEmpCode(event.target.value)} placeholder="EMP-2026-001" className="w-full rounded-2xl border border-slate-200 px-3.5 py-2.5 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" /></div>
+                    <Field label="Institution" htmlFor="reg-institution">
+                      <input id="reg-institution" value={regInstitution} onChange={(event) => setRegInstitution(event.target.value)} placeholder="Your university" className="input" required />
+                      <FieldError>{fieldErrors.institution}</FieldError>
+                    </Field>
+                    <Field label="Employee Code" htmlFor="reg-code" optional>
+                      <input id="reg-code" value={regEmpCode} onChange={(event) => setRegEmpCode(event.target.value)} placeholder="EMP-2026-001" className="input" />
+                    </Field>
                   </div>
-                  <div><label htmlFor="reg-dept" className="mb-1 block font-bold text-slate-700">Department</label><input id="reg-dept" value={regDept} onChange={(event) => setRegDept(event.target.value)} placeholder="Your department" className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 font-bold focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><FieldError>{fieldErrors.department}</FieldError></div>
-                  <div><label htmlFor="reg-password" className="mb-1 block font-bold text-slate-700">Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input id="reg-password" type={showRegPassword ? 'text' : 'password'} value={regPassword} onChange={(event) => setRegPassword(event.target.value)} placeholder="Create a secure password" className="w-full rounded-2xl border border-slate-200 py-2.5 pl-11 pr-11 font-medium focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20" required /><button type="button" onClick={() => setShowRegPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400" aria-label={showRegPassword ? 'Hide password' : 'Show password'}>{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div><div className="mt-2 grid grid-cols-2 gap-1 text-xs font-semibold text-slate-500 sm:grid-cols-3">{passwordRules.map((rule) => <span key={rule.id} className={rule.met ? 'text-emerald-700' : ''}>{rule.met ? '✓' : '○'} {rule.label}</span>)}</div><FieldError>{fieldErrors.password}</FieldError></div>
-                  <label className="flex items-start gap-2 text-sm font-medium text-slate-600"><input type="checkbox" checked={agreeTerms} onChange={(event) => setAgreeTerms(event.target.checked)} className="mt-1 rounded text-[#FD6F3B] focus:ring-[#FD6F3B]" /><span>I agree to institutional self-appraisal terms and data confidentiality policy.</span></label>
+                  <Field label="Department" htmlFor="reg-dept">
+                    <input id="reg-dept" value={regDept} onChange={(event) => setRegDept(event.target.value)} placeholder="Your department" className="input" required />
+                    <FieldError>{fieldErrors.department}</FieldError>
+                  </Field>
+                  <Field label="Password" htmlFor="reg-password">
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--brand-subtle)]" />
+                      <input id="reg-password" type={showRegPassword ? 'text' : 'password'} value={regPassword} onChange={(event) => setRegPassword(event.target.value)} placeholder="Create a secure password" className="input !pl-11 !pr-11" required />
+                      <button type="button" onClick={() => setShowRegPassword((value) => !value)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-[var(--brand-subtle)] transition hover:text-[var(--brand-primary)]" aria-label={showRegPassword ? 'Hide password' : 'Show password'}>
+                        {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-xs font-semibold text-[var(--brand-subtle)] sm:grid-cols-3">
+                      {passwordRules.map((rule) => <span key={rule.id} className={rule.met ? 'text-[var(--brand-mint-ink)]' : ''}>{rule.met ? '✓' : '○'} {rule.label}</span>)}
+                    </div>
+                    <FieldError>{fieldErrors.password}</FieldError>
+                  </Field>
+                  <label className="flex items-start gap-2 text-sm font-medium text-[var(--brand-muted)]">
+                    <input type="checkbox" checked={agreeTerms} onChange={(event) => setAgreeTerms(event.target.checked)} className="mt-1 accent-[var(--brand-primary)]" />
+                    <span>I agree to institutional self-appraisal terms and data confidentiality policy.</span>
+                  </label>
                   <FieldError>{fieldErrors.terms}</FieldError>
-                  <button type="submit" disabled={busy || !config.isConfigured} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FD6F3B] py-3.5 text-base font-bold text-white shadow-md shadow-orange-500/25 transition-all hover:bg-[#E05320] disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <><span>Create Faculty Account</span><ArrowRight className="h-4.5 w-4.5" /></>}</button>
+                  <button type="submit" disabled={busy || !config.isConfigured} className="btn btn-primary btn-lg w-full">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>Create Faculty Account</span><ArrowRight className="h-4 w-4" /></>}
+                  </button>
                 </form>
               </div>
             )}
           </div>
-          <p className="mt-8 border-t border-slate-100 pt-4 text-center text-xs font-medium text-slate-400">By continuing, you agree to our Terms of Service and Privacy Policy.</p>
+          <p className="mt-8 border-t border-[var(--brand-border-soft)] pt-4 text-center text-xs font-medium text-[var(--brand-subtle)]">By continuing, you agree to our Terms of Service and Privacy Policy.</p>
         </div>
 
-        <div className="relative flex w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-orange-100/70 via-amber-50/50 to-orange-200/60 p-8 sm:p-12 lg:w-1/2">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-200/40 via-transparent to-transparent" />
-          <div className="relative z-10 text-right"><span className="font-serif text-4xl font-bold text-orange-400">“</span><h2 className="text-xl font-extrabold leading-snug tracking-tight text-orange-950">Everything you need.<br />All in one place.</h2><span className="font-serif text-4xl font-bold text-orange-400">”</span></div>
-          <div className="relative z-10 my-6 flex items-center justify-center">
-            <div className="absolute h-72 w-64 rounded-full bg-orange-200/80 blur-xl" />
-            <div className="relative h-80 w-64 overflow-hidden rounded-3xl border-4 border-white shadow-2xl"><img src="/faculty-portrait.png" alt="Faculty member" className="h-full w-full object-cover object-top" /></div>
-            <div className="absolute -left-4 top-4 max-w-[170px] rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-orange-100 text-[#FD6F3B]"><Cloud className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Auto-save evidence</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Keep every contribution verifiable.</p></div>
-            <div className="absolute -right-4 top-1/2 max-w-[170px] -translate-y-1/2 rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Users className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Role-based access</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Secure and relevant for everyone.</p></div>
-            <div className="absolute -bottom-2 -left-2 max-w-[170px] rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl"><div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-600"><FileCheck className="h-4.5 w-4.5" /></div><h4 className="text-sm font-bold leading-tight text-slate-900">Appraisal ready</h4><p className="mt-0.5 text-sm leading-snug text-slate-500">Organized from your real record.</p></div>
+        {/* Visual column */}
+        <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-[var(--brand-primary-softer)] p-10 lg:flex lg:p-12">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 46%, var(--brand-lavender) 0%, var(--brand-primary-softer) 58%, transparent 82%)' }}
+          />
+          <Squiggle className="pointer-events-none absolute left-10 top-24 h-6 w-14 text-[var(--brand-lavender-strong)]" />
+          <Sparkle className="pointer-events-none absolute right-12 top-16 h-8 w-8 text-[var(--brand-butter-strong)]" />
+
+          <motion.div {...heroReveal} className="relative z-10 text-right">
+            <span className="font-serif text-4xl font-bold text-[var(--brand-primary)]">“</span>
+            <h2 className="text-2xl font-extrabold leading-snug tracking-tight text-[var(--brand-ink)]">
+              Everything you need.<br />
+              <span className="text-[var(--brand-primary-hover)]">All in one place.</span>
+            </h2>
+            <span className="font-serif text-4xl font-bold text-[var(--brand-primary)]">”</span>
+          </motion.div>
+
+          <motion.div {...heroRevealDelayed(0.15)} className="relative z-10 my-8 flex items-center justify-center">
+            <div className="relative h-80 w-64 overflow-hidden rounded-[28px] border-4 border-[var(--brand-surface)] shadow-[var(--shadow-raised)]">
+              <img src="/faculty-portrait.png" alt="A faculty member" className="h-full w-full object-cover object-top" />
+            </div>
+            {benefitCards.map((card, index) => {
+              const Icon = card.icon;
+              return (
+                <div key={card.title} className={`app-surface absolute max-w-[172px] p-3.5 ${card.className} ${index === 0 ? 'animate-float' : ''}`}>
+                  <span className={`icon-chip !h-8 !w-8 ${card.tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span>
+                  <h4 className="mt-2 text-sm font-bold leading-tight text-[var(--brand-ink)]">{card.title}</h4>
+                  <p className="mt-0.5 text-xs leading-snug text-[var(--brand-muted)]">{card.text}</p>
+                </div>
+              );
+            })}
+          </motion.div>
+
+          <div className="relative z-10 flex items-center gap-2 text-sm font-bold text-[var(--brand-ink)]">
+            <ShieldCheck className="h-4 w-4 text-[var(--brand-primary-hover)]" aria-hidden="true" />
+            Built for faculty. <span className="underline decoration-[var(--brand-primary)] decoration-2 underline-offset-4">Backed by trust.</span>
           </div>
-          <div className="relative z-10 flex items-center gap-2 text-base font-serif italic font-bold text-orange-900"><ShieldCheck className="h-4 w-4" />Built for faculty. <span className="underline decoration-orange-400">Backed by trust.</span></div>
         </div>
       </div>
     </div>

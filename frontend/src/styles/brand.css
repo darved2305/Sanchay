@@ -1,0 +1,365 @@
+/*
+ * Sanchaya brand system — the single source of truth for product color,
+ * surface, control, and status styling. Components must consume these tokens
+ * and semantic classes instead of scattering raw hex or ad-hoc Tailwind
+ * palette utilities across pages.
+ */
+
+@layer base {
+  :root {
+    /* Canvas */
+    --brand-canvas: #fbfaf7;
+    --brand-canvas-soft: #f8f6f2;
+
+    /* Surfaces */
+    --brand-surface: #ffffff;
+    --brand-surface-muted: #f6f4f0;
+
+    /* Text */
+    --brand-ink: #1c1b20;
+    --brand-text: #29272f;
+    --brand-muted: #706d78;
+    --brand-subtle: #9b97a3;
+
+    /* Borders */
+    --brand-border: #e8e4df;
+    --brand-border-soft: #efece8;
+
+    /* Primary lavender */
+    --brand-primary: #8b7cf6;
+    --brand-primary-hover: #7e6ff0;
+    --brand-primary-soft: #eeeafe;
+    --brand-primary-softer: #f6f3ff;
+
+    /* Pastel category surfaces */
+    --brand-lavender: #ece8ff;
+    --brand-lavender-strong: #cfc6ff;
+    --brand-mint: #dff4ea;
+    --brand-mint-strong: #aee4cc;
+    --brand-peach: #ffe7dd;
+    --brand-peach-strong: #ffc8b5;
+    --brand-butter: #fff3c9;
+    --brand-butter-strong: #f6de87;
+    --brand-sky: #e3f0ff;
+    --brand-sky-strong: #bdd9f6;
+    --brand-rose: #ffe7ec;
+    --brand-rose-strong: #f7c3cf;
+    --brand-aqua: #ddf1f3;
+    --brand-aqua-strong: #afdde2;
+
+    /* Deep accent text tones for pastel surfaces (WCAG-safe on their soft bg) */
+    --brand-lavender-ink: #5a4bc4;
+    --brand-mint-ink: #2f7a58;
+    --brand-peach-ink: #b25a37;
+    --brand-butter-ink: #94701c;
+    --brand-sky-ink: #3a6ea8;
+    --brand-rose-ink: #c04a56;
+    --brand-aqua-ink: #2f7d85;
+
+    /* Semantic */
+    --brand-success: #4ba67b;
+    --brand-success-soft: #e6f7ef;
+    --brand-warning: #c89034;
+    --brand-warning-soft: #fff4dd;
+    --brand-danger: #d36b69;
+    --brand-danger-soft: #fdedec;
+
+    /* Charts — the only chart palette in the product */
+    --brand-chart-1: #8b7cf6;
+    --brand-chart-2: #4ba67b;
+    --brand-chart-3: #f0a58a;
+    --brand-chart-4: #7caee8;
+    --brand-chart-5: #e8c85a;
+    --brand-chart-grid: #efece8;
+
+    /* Modal/drawer overlay */
+    --brand-overlay: rgb(28 27 32 / 45%);
+    --brand-overlay-soft: rgb(28 27 32 / 35%);
+
+    /* Shadows */
+    --shadow-soft: 0 1px 2px rgb(30 27 38 / 4%), 0 6px 20px rgb(30 27 38 / 5%);
+    --shadow-raised: 0 8px 28px rgb(30 27 38 / 8%);
+
+    /* Radii */
+    --radius-control: 12px;
+    --radius-card: 18px;
+    --radius-panel: 22px;
+    --radius-pill: 999px;
+  }
+}
+
+@layer components {
+  /* ---------- Buttons: one system, semantic variants ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-control);
+    border: 1px solid transparent;
+    padding: 0.625rem 1.125rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease,
+      box-shadow 160ms ease, transform 120ms ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { cursor: not-allowed; opacity: 0.5; transform: none; }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgb(139 124 246 / 18%); }
+
+  .btn-primary {
+    background: var(--brand-primary);
+    color: #fff;
+    box-shadow: 0 6px 16px rgb(139 124 246 / 20%);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-primary-hover); box-shadow: 0 8px 20px rgb(139 124 246 / 26%); }
+
+  .btn-secondary {
+    background: var(--brand-surface);
+    border-color: var(--brand-border);
+    color: var(--brand-text);
+  }
+  .btn-secondary:hover:not(:disabled) { background: var(--brand-primary-softer); border-color: var(--brand-lavender-strong); color: var(--brand-primary-hover); }
+
+  .btn-soft {
+    background: var(--brand-primary-soft);
+    color: var(--brand-primary-hover);
+  }
+  .btn-soft:hover:not(:disabled) { background: var(--brand-lavender); }
+
+  .btn-success {
+    background: var(--brand-success-soft);
+    border-color: var(--brand-mint-strong);
+    color: var(--brand-mint-ink);
+  }
+  .btn-success:hover:not(:disabled) { background: var(--brand-mint); }
+
+  .btn-success-solid {
+    background: var(--brand-success);
+    color: #fff;
+    box-shadow: 0 6px 16px rgb(75 166 123 / 20%);
+  }
+  .btn-success-solid:hover:not(:disabled) { background: var(--brand-mint-ink); }
+
+  .btn-attention {
+    background: var(--brand-peach);
+    border-color: var(--brand-peach-strong);
+    color: var(--brand-peach-ink);
+  }
+  .btn-attention:hover:not(:disabled) { background: var(--brand-peach-strong); }
+
+  .btn-destructive {
+    background: var(--brand-danger-soft);
+    border-color: var(--brand-rose-strong);
+    color: var(--brand-rose-ink);
+  }
+  .btn-destructive:hover:not(:disabled) { background: var(--brand-rose); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--brand-muted);
+  }
+  .btn-ghost:hover:not(:disabled) { background: var(--brand-surface-muted); color: var(--brand-ink); }
+
+  .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8125rem; border-radius: 10px; }
+  .btn-lg { padding: 0.8rem 1.5rem; font-size: 0.95rem; }
+
+  /* ---------- Form controls ---------- */
+  .input {
+    width: 100%;
+    border: 1px solid var(--brand-border);
+    border-radius: var(--radius-control);
+    background: var(--brand-surface);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--brand-ink);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .input::placeholder { color: var(--brand-subtle); }
+  .input:focus { border-color: var(--brand-primary); outline: none; box-shadow: 0 0 0 4px rgb(139 124 246 / 14%); }
+  .input:disabled, .input[readonly] { background: var(--brand-surface-muted); color: var(--brand-muted); }
+
+  .input-label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--brand-text);
+  }
+
+  /* ---------- Surfaces ---------- */
+  .app-surface {
+    border: 1px solid var(--brand-border-soft);
+    border-radius: var(--radius-card);
+    background: var(--brand-surface);
+    box-shadow: var(--shadow-soft);
+  }
+  .app-surface-hover { transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease; }
+  .app-surface-hover:hover { box-shadow: var(--shadow-raised); transform: translateY(-2px); border-color: var(--brand-border); }
+
+  /* Kept for backward compatibility with earlier shell markup. */
+  .app-control {
+    border: 1px solid var(--brand-border);
+    border-radius: var(--radius-control);
+    background: var(--brand-surface);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .app-control:focus { border-color: var(--brand-primary); outline: none; box-shadow: 0 0 0 4px rgb(139 124 246 / 14%); }
+
+  /* ---------- Chips: category + filter semantics ---------- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .chip-sky { background: var(--brand-sky); border-color: var(--brand-sky-strong); color: var(--brand-sky-ink); }
+  .chip-lavender { background: var(--brand-lavender); border-color: var(--brand-lavender-strong); color: var(--brand-lavender-ink); }
+  .chip-mint { background: var(--brand-mint); border-color: var(--brand-mint-strong); color: var(--brand-mint-ink); }
+  .chip-peach { background: var(--brand-peach); border-color: var(--brand-peach-strong); color: var(--brand-peach-ink); }
+  .chip-butter { background: var(--brand-butter); border-color: var(--brand-butter-strong); color: var(--brand-butter-ink); }
+  .chip-aqua { background: var(--brand-aqua); border-color: var(--brand-aqua-strong); color: var(--brand-aqua-ink); }
+  .chip-rose { background: var(--brand-rose); border-color: var(--brand-rose-strong); color: var(--brand-rose-ink); }
+  .chip-surface { background: var(--brand-surface-muted); border-color: var(--brand-border); color: var(--brand-muted); }
+  .chip-primary { background: var(--brand-primary-soft); border-color: var(--brand-lavender-strong); color: var(--brand-primary-hover); }
+
+  /* Interactive filter chip */
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--brand-border);
+    background: var(--brand-surface);
+    padding: 0.4rem 0.95rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--brand-muted);
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+  .filter-chip:hover { background: var(--brand-primary-softer); color: var(--brand-primary-hover); }
+  .filter-chip[data-active='true'] {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: #fff;
+    box-shadow: 0 4px 12px rgb(139 124 246 / 22%);
+  }
+
+  /* ---------- Status badges (appraisal + activity lifecycle) ---------- */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .status-draft { background: var(--brand-surface-muted); border-color: var(--brand-border); color: var(--brand-muted); }
+  .status-submitted { background: var(--brand-primary-soft); border-color: var(--brand-lavender-strong); color: var(--brand-primary-hover); }
+  .status-under_review { background: var(--brand-sky); border-color: var(--brand-sky-strong); color: var(--brand-sky-ink); }
+  .status-returned { background: var(--brand-peach); border-color: var(--brand-peach-strong); color: var(--brand-peach-ink); }
+  .status-approved { background: var(--brand-success-soft); border-color: var(--brand-mint-strong); color: var(--brand-mint-ink); }
+  .status-rejected { background: var(--brand-danger-soft); border-color: var(--brand-rose-strong); color: var(--brand-rose-ink); }
+  .status-pending { background: var(--brand-warning-soft); border-color: var(--brand-butter-strong); color: var(--brand-butter-ink); }
+
+  /* ---------- Tables: one design language ---------- */
+  .table-shell { overflow-x: auto; }
+  .table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem; }
+  .table thead th {
+    background: var(--brand-canvas-soft);
+    border-bottom: 1px solid var(--brand-border);
+    padding: 0.75rem 1rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand-muted);
+    white-space: nowrap;
+  }
+  .table tbody tr { border-bottom: 1px solid var(--brand-border-soft); transition: background 140ms ease; }
+  .table tbody tr:last-child { border-bottom: 0; }
+  .table tbody tr:hover { background: var(--brand-primary-softer); }
+  .table tbody td { padding: 0.875rem 1rem; vertical-align: middle; color: var(--brand-text); }
+
+  /* ---------- Progress ---------- */
+  .progress-track { height: 0.625rem; overflow: hidden; border-radius: var(--radius-pill); background: var(--brand-surface-muted); }
+  .progress-fill { height: 100%; border-radius: var(--radius-pill); background: var(--brand-primary); transition: width 500ms ease; }
+
+  /* ---------- State blocks ---------- */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2.75rem 1.5rem;
+    text-align: center;
+  }
+  .empty-state-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-card);
+    background: var(--brand-primary-soft);
+    color: var(--brand-primary);
+    margin-bottom: 0.25rem;
+  }
+
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    border-radius: var(--radius-control);
+    border: 1px solid transparent;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .notice-error { background: var(--brand-danger-soft); border-color: var(--brand-rose-strong); color: var(--brand-rose-ink); }
+  .notice-success { background: var(--brand-success-soft); border-color: var(--brand-mint-strong); color: var(--brand-mint-ink); }
+  .notice-info { background: var(--brand-sky); border-color: var(--brand-sky-strong); color: var(--brand-sky-ink); }
+
+  /* ---------- Skeletons ---------- */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background: var(--brand-surface-muted);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 65%), transparent);
+    animation: skeleton-shimmer 1.5s infinite;
+  }
+  @keyframes skeleton-shimmer { 100% { transform: translateX(100%); } }
+
+  /* ---------- Pastel icon chip ---------- */
+  .icon-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-control);
+    flex-shrink: 0;
+  }
+}

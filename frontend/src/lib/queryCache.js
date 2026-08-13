@@ -106,7 +106,7 @@ export function useApiQuery(key, fetcher, { enabled = true } = {}) {
   useEffect(() => {
     if (!enabled) return undefined;
     const unsubscribe = subscribeQuery(JSON.parse(serializedKey), () => {
-      load(true);
+      load();
     });
     load();
     return unsubscribe;

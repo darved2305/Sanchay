@@ -1,12 +1,22 @@
 import React, { useMemo } from 'react';
-import { ArrowRight, CheckCircle2, Clock3, FileCheck, Plus, RefreshCw, Upload, WifiOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowRight, Bell, CheckCircle2, Clock3, FileCheck, Plus, RefreshCw, Upload } from 'lucide-react';
 import { api, payloadData } from '../lib/api';
 import { useApiQuery } from '../lib/queryCache';
 import { runtimeConfigMessage } from '../lib/config';
-import { categoryLabel } from '../lib/constants';
+import { categoryLabel, CATEGORY_COLOR_TOKENS } from '../lib/constants';
+import { Button, Card, ErrorState, ProgressBar, Skeleton, StatusBadge } from '../components/ui';
+import { cardEnter, pageEnter, staggerParent } from '../lib/motion';
 
 function displayName(data, profile) {
   return data?.full_name || data?.name || profile?.full_name || profile?.name || 'Faculty member';
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function asPercent(value) {
@@ -24,8 +34,21 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function emptyMessage({ title, detail, action, onAction }) {
-  return <div className="rounded-3xl border border-slate-200/80 bg-white p-8 text-center shadow-xs"><WifiOff className="mx-auto h-9 w-9 text-slate-300" /><h3 className="mt-3 text-lg font-bold text-slate-800">{title}</h3><p className="mx-auto mt-1 max-w-lg text-sm text-slate-500">{detail}</p>{action && <button onClick={onAction} className="mt-4 rounded-xl bg-[#FD6F3B] px-4 py-2 text-sm font-bold text-white hover:bg-[#E05320]">{action}</button>}</div>;
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-10 w-72" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Skeleton className="h-64 !rounded-[var(--radius-card)]" />
+        <Skeleton className="h-64 !rounded-[var(--radius-card)]" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Skeleton className="h-48 !rounded-[var(--radius-card)]" />
+        <Skeleton className="h-48 !rounded-[var(--radius-card)]" />
+        <Skeleton className="h-48 !rounded-[var(--radius-card)]" />
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardOverview({ setCurrentView, onOpenAddModal, profile }) {
@@ -45,27 +68,236 @@ export default function DashboardOverview({ setCurrentView, onOpenAddModal, prof
   const totalCategories = categoryEntries.reduce((total, [, value]) => total + Number(value), 0);
   const hasRecord = recents.length > 0 || categoryEntries.length > 0 || inbox.length > 0;
 
-  if (dashboard.loading && !dashboard.data) {
-    return <div className="space-y-6"><div className="h-10 w-72 animate-pulse rounded-xl bg-slate-200" /><div className="grid grid-cols-1 gap-6 lg:grid-cols-2"><div className="h-64 animate-pulse rounded-3xl bg-white" /><div className="h-64 animate-pulse rounded-3xl bg-white" /></div><div className="grid grid-cols-1 gap-6 md:grid-cols-3"><div className="h-48 animate-pulse rounded-3xl bg-white" /><div className="h-48 animate-pulse rounded-3xl bg-white" /><div className="h-48 animate-pulse rounded-3xl bg-white" /></div></div>;
-  }
+  if (dashboard.loading && !dashboard.data) return <OverviewSkeleton />;
 
   if (dashboard.error) {
-    return <div className="space-y-6"><h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Faculty overview</h1>{emptyMessage({ title: 'We could not load your overview', detail: runtimeConfigMessage(dashboard.error), action: 'Retry', onAction: dashboard.refetch })}</div>;
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">Faculty overview</h1>
+        <Card><ErrorState title="We could not load your overview" detail={runtimeConfigMessage(dashboard.error)} onRetry={dashboard.refetch} /></Card>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-7 pb-12">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Welcome, {displayName(data, profile)}</h1><p className="mt-1 text-base font-medium text-slate-600">Here is the latest view of your faculty record from Sanchaya.</p></div><div className="flex items-center gap-2.5 self-start rounded-full border border-slate-200 bg-white px-4 py-2 shadow-2xs sm:self-auto"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /><span className="text-sm font-bold text-slate-800">{appraisal.cycle || data.current_cycle || 'Current appraisal cycle'}</span>{appraisal.status && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-extrabold text-emerald-800">{appraisal.status}</span>}</div></div>
+    <motion.div {...pageEnter} className="space-y-7 pb-12">
+      {/* Header */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">{greeting()}, {displayName(data, profile)}</h1>
+          <p className="mt-1.5 text-[15px] font-medium text-[var(--brand-muted)]">Here is what needs your attention today.</p>
+        </div>
+        <div className="flex items-center gap-2.5 self-start rounded-[var(--radius-pill)] border border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-2 shadow-[var(--shadow-soft)] sm:self-auto">
+          <span className="h-2.5 w-2.5 rounded-full bg-[var(--brand-success)]" aria-hidden="true" />
+          <span className="text-sm font-bold text-[var(--brand-ink)]">{appraisal.cycle || data.current_cycle || 'Current appraisal cycle'}</span>
+          {appraisal.status && <StatusBadge status={appraisal.status} />}
+        </div>
+      </div>
 
-      {!hasRecord && <div className="rounded-3xl border border-orange-200/80 bg-gradient-to-r from-orange-50 to-amber-50 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><span className="rounded-full bg-orange-200/80 px-3 py-1 text-xs font-bold text-orange-950">Your record is ready</span><h2 className="mt-3 text-xl font-extrabold text-orange-950">Start with one real contribution</h2><p className="mt-1 max-w-xl text-sm font-medium text-orange-900">Add an activity, upload evidence, or update your profile. Counts and readiness will appear as your data arrives from the backend.</p></div><button onClick={() => onOpenAddModal?.()} className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#FD6F3B] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#E05320]"><Plus className="h-4 w-4" />Add Activity</button></div></div>}
+      {/* New-user setup banner */}
+      {!hasRecord && (
+        <div className="rounded-[var(--radius-panel)] border border-[var(--brand-lavender-strong)] bg-[var(--brand-primary-softer)] p-6">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <span className="chip chip-primary">Your record is ready</span>
+              <h2 className="mt-3 text-xl font-extrabold text-[var(--brand-ink)]">Start with one real contribution</h2>
+              <p className="mt-1 max-w-xl text-sm font-medium text-[var(--brand-muted)]">
+                Add an activity, upload evidence, or update your profile. Counts and readiness appear as your data arrives.
+              </p>
+            </div>
+            <Button variant="primary" className="shrink-0" onClick={() => onOpenAddModal?.()}>
+              <Plus className="h-4 w-4" /> Add Activity
+            </Button>
+          </div>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12"><section className="flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs lg:col-span-7"><div><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-900">Appraisal readiness</h2><p className="mt-1 text-sm text-slate-500">Live status for the current cycle.</p></div><FileCheck className="h-6 w-6 text-[#FD6F3B]" /></div>{readinessValue === null ? <p className="mt-10 text-sm font-semibold text-slate-500">Readiness has not been calculated yet.</p> : <div className="mt-7"><div className="flex items-end justify-between"><span className="text-5xl font-extrabold text-slate-900">{Math.round(readinessValue)}%</span><span className="text-sm font-bold text-slate-500">{appraisal.status || 'In progress'}</span></div><div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#FD6F3B] transition-all" style={{ width: `${readinessValue}%` }} /></div></div>}</div><button onClick={() => setCurrentView('appraisal')} className="mt-7 flex items-center gap-2 border-t border-slate-100 pt-4 text-sm font-bold text-[#FD6F3B] hover:text-[#E05320]">Open Appraisal <ArrowRight className="h-4 w-4" /></button></section><section className="rounded-3xl border border-orange-200/80 bg-gradient-to-br from-orange-50 via-amber-50/60 to-orange-100 p-6 shadow-xs lg:col-span-5"><div className="flex items-center gap-2 text-orange-900"><Clock3 className="h-5 w-5 text-[#FD6F3B]" /><h2 className="text-xs font-bold uppercase tracking-wider">Academic inbox</h2></div>{inbox.length === 0 ? <div className="mt-8"><h3 className="text-xl font-extrabold text-orange-950">Nothing needs your attention</h3><p className="mt-2 text-sm font-medium text-orange-900">New proposals, evidence matches and review updates will appear here.</p></div> : <div className="mt-4 space-y-3">{inbox.slice(0, 4).map((item, index) => <button key={item.id || `${item.kind}-${index}`} onClick={() => item.link_path ? window.location.assign(item.link_path) : setCurrentView('appraisal')} className="flex w-full items-start justify-between gap-3 rounded-2xl border border-orange-200/70 bg-white/80 p-3 text-left hover:bg-white"><span><p className="font-bold text-orange-950">{item.text || item.title || item.kind || 'Review item'}</p><p className="mt-0.5 text-xs font-medium text-orange-800">{item.count ?? 1} item{Number(item.count) === 1 ? '' : 's'}</p></span><ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[#FD6F3B]" /></button>)}</div>}</section></div>
+      {/* Readiness + inbox */}
+      <motion.div {...staggerParent} className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <motion.section {...cardEnter} className="app-surface flex flex-col justify-between p-6 lg:col-span-7">
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Appraisal readiness</h2>
+                <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Live status for the current cycle.</p>
+              </div>
+              <span className="icon-chip bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)]"><FileCheck className="h-5 w-5" /></span>
+            </div>
+            {readinessValue === null ? (
+              <p className="mt-10 text-sm font-semibold text-[var(--brand-muted)]">Readiness has not been calculated yet.</p>
+            ) : (
+              <div className="mt-7">
+                <div className="flex items-end justify-between gap-3">
+                  <span className="text-5xl font-extrabold tracking-tight text-[var(--brand-ink)]">{Math.round(readinessValue)}%</span>
+                  <StatusBadge status={appraisal.status || 'draft'} />
+                </div>
+                <ProgressBar value={readinessValue} className="mt-4" />
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentView('appraisal')}
+            className="mt-7 flex items-center gap-2 border-t border-[var(--brand-border-soft)] pt-4 text-sm font-bold text-[var(--brand-primary-hover)] transition hover:underline"
+          >
+            Open Appraisal <ArrowRight className="h-4 w-4" />
+          </button>
+        </motion.section>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3"><section className="flex flex-col rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs"><div className="flex items-center gap-2.5"><Clock3 className="h-5 w-5 text-[#FD6F3B]" /><h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Upcoming deadlines</h3></div><div className="mt-5 flex-1 space-y-3">{deadlines.length === 0 ? <p className="text-sm font-medium text-slate-500">No deadlines are currently returned.</p> : deadlines.slice(0, 4).map((item, index) => <div key={item.id || `${item.title}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-3"><p className="font-bold text-slate-900">{item.title || item.name || 'Deadline'}</p><p className="mt-0.5 text-xs font-medium text-slate-500">{formatDate(item.due_at || item.deadline || item.date)}{item.subtitle ? ` · ${item.subtitle}` : ''}</p></div>)}</div></section><section className="flex flex-col rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs"><div className="flex items-center gap-2.5"><Upload className="h-5 w-5 text-amber-600" /><h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Pending evidence</h3></div><div className="mt-5 flex-1 space-y-3">{pendingEvidence.length === 0 ? <p className="text-sm font-medium text-slate-500">No pending evidence returned.</p> : pendingEvidence.slice(0, 4).map((item, index) => <div key={item.id || `${item.category}-${index}`} className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3"><div><p className="font-bold text-slate-900">{item.category || item.title || 'Evidence item'}</p><p className="text-xs font-medium text-slate-500">{item.count ?? 1} item{Number(item.count) === 1 ? '' : 's'}</p></div><button onClick={() => setCurrentView('evidence')} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">Upload</button></div>)}</div><button onClick={() => setCurrentView('evidence')} className="mt-5 border-t border-slate-100 pt-4 text-left text-sm font-bold text-[#FD6F3B]">Open Evidence Library</button></section><section className="flex flex-col rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs"><div className="flex items-center gap-2.5"><RefreshCw className="h-5 w-5 text-emerald-600" /><h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Recent activities</h3></div><div className="mt-5 flex-1 space-y-3">{recents.length === 0 ? <p className="text-sm font-medium text-slate-500">No recent activities returned.</p> : recents.slice(0, 5).map((item, index) => <div key={item.id || `${item.title}-${index}`} className="flex items-start gap-3"><div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-100 text-[#FD6F3B]"><CheckCircle2 className="h-4 w-4" /></div><div><p className="font-bold text-slate-900">{item.title || item.activity || item.text || 'Activity'}</p><p className="mt-0.5 text-xs font-medium text-slate-400">{formatDate(item.start_date || item.created_at || item.date)}</p></div></div>)}</div><button onClick={() => setCurrentView('activities')} className="mt-5 border-t border-slate-100 pt-4 text-left text-sm font-bold text-[#FD6F3B]">View Activities</button></section></div>
+        <motion.section {...cardEnter} className="rounded-[var(--radius-card)] border border-[var(--brand-butter-strong)] bg-[var(--brand-butter)] p-6 lg:col-span-5">
+          <div className="flex items-center gap-2 text-[var(--brand-butter-ink)]">
+            <Bell className="h-5 w-5" />
+            <h2 className="text-xs font-bold uppercase tracking-wider">Academic inbox</h2>
+          </div>
+          {inbox.length === 0 ? (
+            <div className="mt-8">
+              <h3 className="text-xl font-extrabold text-[var(--brand-ink)]">Nothing needs your attention</h3>
+              <p className="mt-2 text-sm font-medium text-[var(--brand-muted)]">New proposals, evidence matches and review updates will appear here.</p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {inbox.slice(0, 4).map((item, index) => (
+                <button
+                  key={item.id || `${item.kind}-${index}`}
+                  type="button"
+                  onClick={() => item.link_path ? window.location.assign(item.link_path) : setCurrentView('appraisal')}
+                  className="flex w-full items-start justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] p-3 text-left transition hover:border-[var(--brand-lavender-strong)] hover:bg-[var(--brand-primary-softer)]"
+                >
+                  <span>
+                    <p className="font-bold text-[var(--brand-ink)]">{item.text || item.title || item.kind || 'Review item'}</p>
+                    <p className="mt-0.5 text-xs font-medium text-[var(--brand-muted)]">{item.count ?? 1} item{Number(item.count) === 1 ? '' : 's'}</p>
+                  </span>
+                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--brand-primary)]" />
+                </button>
+              ))}
+            </div>
+          )}
+        </motion.section>
+      </motion.div>
 
-      <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-900">Contribution overview</h2><p className="mt-1 text-sm font-medium text-slate-500">Category counts returned for this faculty record.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{totalCategories || 0} loaded activities</span></div>{categoryEntries.length === 0 ? <p className="mt-6 rounded-2xl bg-slate-50 p-5 text-sm font-semibold text-slate-500">No category counts are available yet. Add an activity to begin.</p> : <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">{categoryEntries.map(([key, value]) => { const count = Number(value); const percentage = totalCategories ? Math.round((count / totalCategories) * 100) : 0; return <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50 p-4"><div className="flex items-center justify-between gap-2"><span className="text-sm font-bold text-slate-800">{categoryLabel(key)}</span><span className="text-sm font-extrabold text-[#E05320]">{count}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#FD6F3B]" style={{ width: `${percentage}%` }} /></div><p className="mt-1 text-xs font-medium text-slate-500">{percentage}% of returned categories</p></div>; })}</div>}</section>
+      {/* Deadlines / pending evidence / recents */}
+      <motion.div {...staggerParent} className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <motion.section {...cardEnter} className="app-surface flex flex-col p-6">
+          <div className="flex items-center gap-2.5">
+            <span className="icon-chip !h-8 !w-8 chip-sky"><Clock3 className="h-4 w-4" /></span>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Upcoming deadlines</h3>
+          </div>
+          <div className="mt-5 flex-1 space-y-3">
+            {deadlines.length === 0 ? (
+              <p className="text-sm font-medium text-[var(--brand-muted)]">No deadlines are currently returned.</p>
+            ) : deadlines.slice(0, 4).map((item, index) => (
+              <div key={item.id || `${item.title}-${index}`} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3">
+                <p className="font-bold text-[var(--brand-ink)]">{item.title || item.name || 'Deadline'}</p>
+                <p className="mt-0.5 text-xs font-medium text-[var(--brand-muted)]">{formatDate(item.due_at || item.deadline || item.date)}{item.subtitle ? ` · ${item.subtitle}` : ''}</p>
+              </div>
+            ))}
+          </div>
+        </motion.section>
 
-      <section><h3 className="mb-3.5 text-xs font-bold uppercase tracking-wider text-slate-500">Quick actions</h3><div className="grid grid-cols-1 gap-4 sm:grid-cols-3"><button onClick={() => onOpenAddModal?.()} className="rounded-2xl border border-orange-200/80 bg-[#FFF4F0] p-4 text-left transition-all hover:bg-orange-100/70"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FD6F3B] text-white"><Plus className="h-5 w-5" /></div><h4 className="text-lg font-bold text-orange-950">Log an activity</h4><p className="mt-1 text-sm font-medium text-[#E05320]">Add a contribution to your record.</p></button><button onClick={() => setCurrentView('evidence')} className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 text-left transition-all hover:bg-amber-100/70"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white"><Upload className="h-5 w-5" /></div><h4 className="text-lg font-bold text-amber-950">Add evidence</h4><p className="mt-1 text-sm font-medium text-amber-800">Upload proof and attach selected activities.</p></button><button onClick={() => setCurrentView('appraisal')} className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4 text-left transition-all hover:bg-emerald-100/70"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white"><FileCheck className="h-5 w-5" /></div><h4 className="text-lg font-bold text-emerald-950">Open appraisal</h4><p className="mt-1 text-sm font-medium text-emerald-800">Review the current cycle from the API.</p></button></div></section>
-    </div>
+        <motion.section {...cardEnter} className="app-surface flex flex-col p-6">
+          <div className="flex items-center gap-2.5">
+            <span className="icon-chip !h-8 !w-8 chip-butter"><Upload className="h-4 w-4" /></span>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Pending evidence</h3>
+          </div>
+          <div className="mt-5 flex-1 space-y-3">
+            {pendingEvidence.length === 0 ? (
+              <p className="text-sm font-medium text-[var(--brand-muted)]">No pending evidence returned.</p>
+            ) : pendingEvidence.slice(0, 4).map((item, index) => (
+              <div key={item.id || `${item.category}-${index}`} className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-3">
+                <div>
+                  <p className="font-bold text-[var(--brand-ink)]">{item.category || item.title || 'Evidence item'}</p>
+                  <p className="text-xs font-medium text-[var(--brand-muted)]">{item.count ?? 1} item{Number(item.count) === 1 ? '' : 's'}</p>
+                </div>
+                <Button variant="attention" size="sm" onClick={() => setCurrentView('evidence')}>Upload</Button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setCurrentView('evidence')} className="mt-5 border-t border-[var(--brand-border-soft)] pt-4 text-left text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
+            Open Evidence Library
+          </button>
+        </motion.section>
+
+        <motion.section {...cardEnter} className="app-surface flex flex-col p-6">
+          <div className="flex items-center gap-2.5">
+            <span className="icon-chip !h-8 !w-8 chip-mint"><RefreshCw className="h-4 w-4" /></span>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Recent activities</h3>
+          </div>
+          <div className="mt-5 flex-1 space-y-3">
+            {recents.length === 0 ? (
+              <p className="text-sm font-medium text-[var(--brand-muted)]">No recent activities returned.</p>
+            ) : recents.slice(0, 5).map((item, index) => (
+              <div key={item.id || `${item.title}-${index}`} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-success-soft)] text-[var(--brand-mint-ink)]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-bold text-[var(--brand-ink)]">{item.title || item.activity || item.text || 'Activity'}</p>
+                  <p className="mt-0.5 text-xs font-medium text-[var(--brand-subtle)]">{formatDate(item.start_date || item.created_at || item.date)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setCurrentView('activities')} className="mt-5 border-t border-[var(--brand-border-soft)] pt-4 text-left text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
+            View Activities
+          </button>
+        </motion.section>
+      </motion.div>
+
+      {/* Contribution overview */}
+      <motion.section {...cardEnter} className="app-surface p-6">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Contribution overview</h2>
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Category counts returned for this faculty record.</p>
+          </div>
+          <span className="chip chip-surface">{totalCategories || 0} loaded activities</span>
+        </div>
+        {categoryEntries.length === 0 ? (
+          <p className="mt-6 rounded-[var(--radius-control)] bg-[var(--brand-canvas-soft)] p-5 text-sm font-semibold text-[var(--brand-muted)]">
+            No category counts are available yet. Add an activity to begin.
+          </p>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {categoryEntries.map(([key, value]) => {
+              const count = Number(value);
+              const percentage = totalCategories ? Math.round((count / totalCategories) * 100) : 0;
+              const token = CATEGORY_COLOR_TOKENS[key] || 'surface';
+              return (
+                <div key={key} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`chip chip-${token} !border-0`}>{categoryLabel(key)}</span>
+                    <span className="text-sm font-extrabold text-[var(--brand-ink)]">{count}</span>
+                  </div>
+                  <ProgressBar value={percentage} className="mt-3 !h-2" />
+                  <p className="mt-1.5 text-xs font-medium text-[var(--brand-subtle)]">{percentage}% of returned categories</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.section>
+
+      {/* Quick actions */}
+      <motion.section {...cardEnter}>
+        <h3 className="mb-3.5 text-xs font-bold uppercase tracking-wider text-[var(--brand-subtle)]">Quick actions</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <button type="button" onClick={() => onOpenAddModal?.()} className="app-surface app-surface-hover p-5 text-left">
+            <span className="icon-chip bg-[var(--brand-primary)] text-white"><Plus className="h-5 w-5" /></span>
+            <h4 className="mt-3 text-lg font-extrabold text-[var(--brand-ink)]">Log an activity</h4>
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Add a contribution to your record.</p>
+          </button>
+          <button type="button" onClick={() => setCurrentView('evidence')} className="app-surface app-surface-hover p-5 text-left">
+            <span className="icon-chip chip-butter"><Upload className="h-5 w-5" /></span>
+            <h4 className="mt-3 text-lg font-extrabold text-[var(--brand-ink)]">Add evidence</h4>
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Upload proof and attach selected activities.</p>
+          </button>
+          <button type="button" onClick={() => setCurrentView('appraisal')} className="app-surface app-surface-hover p-5 text-left">
+            <span className="icon-chip chip-mint"><FileCheck className="h-5 w-5" /></span>
+            <h4 className="mt-3 text-lg font-extrabold text-[var(--brand-ink)]">Open appraisal</h4>
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Review the current cycle from the API.</p>
+          </button>
+        </div>
+      </motion.section>
+    </motion.div>
   );
 }

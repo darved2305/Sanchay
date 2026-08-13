@@ -18,6 +18,28 @@ export const ACTIVITY_CATEGORIES = [
   { id: 'other', label: 'Other' },
 ];
 
+// Shared visual semantics for category chips, timelines, charts, and filters.
+// Components should use the token names rather than inventing page-local colors.
+export const CATEGORY_COLOR_TOKENS = {
+  teaching: 'sky',
+  research: 'lavender',
+  publication: 'lavender',
+  project: 'mint',
+  grant: 'mint',
+  workshop_fdp: 'butter',
+  seminar: 'butter',
+  invited_talk: 'sky',
+  mentorship: 'mint',
+  committee: 'aqua',
+  institutional_service: 'peach',
+  community_engagement: 'peach',
+  award: 'butter',
+  patent: 'lavender',
+  reviewing: 'sky',
+  conference: 'sky',
+  other: 'surface',
+};
+
 export const EVIDENCE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
 export const EVIDENCE_MIME_TYPES = [
   'application/pdf',

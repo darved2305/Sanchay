@@ -1,11 +1,33 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft, RefreshCw, CheckCircle2, Clock, XCircle,
-  GraduationCap, Filter, ChevronDown, Check, Edit2, X, Download, TrendingUp, TrendingDown
+  GraduationCap, ChevronDown, Check, Edit2, X, Download, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { SiGmail, SiGooglecalendar, SiGoogledrive, SiOrcid } from 'react-icons/si';
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell } from 'recharts';
 import { recoveredActivities, monthlyOverviewData, sourceCoverageData } from '../data/reconstructData';
+import { chartPalette, chartVar, CHART_TOOLTIP_STYLE } from '../lib/chartTheme';
+import { Button, PageHeader } from '../components/ui';
+import { cardEnter, pageEnter } from '../lib/motion';
+
+/* Deferred USP demo surface: presentation-only fixture data (see data/reconstructData.js). */
+
+const SOURCE_CARDS = [
+  { name: 'Gmail', count: 6, icon: SiGmail, brandColor: '#EA4335', chip: 'chip-rose' },
+  { name: 'Calendar', count: 5, icon: SiGooglecalendar, brandColor: '#4285F4', chip: 'chip-sky' },
+  { name: 'Drive', count: 3, icon: SiGoogledrive, brandColor: '#4285F4', chip: 'chip-butter' },
+  { name: 'ORCID', count: 2, icon: SiOrcid, brandColor: '#A6CE39', chip: 'chip-mint' },
+  { name: 'Student Records', count: 2, icon: GraduationCap, brandColor: null, chip: 'chip-lavender' },
+];
+
+const CATEGORY_TONES = {
+  Service: 'peach',
+  Workshops: 'butter',
+  Mentorship: 'mint',
+  Research: 'lavender',
+  Committees: 'aqua',
+};
 
 export default function ReconstructMyYear({ setCurrentView }) {
   const [activities, setActivities] = useState(recoveredActivities);
@@ -14,19 +36,19 @@ export default function ReconstructMyYear({ setCurrentView }) {
 
   const handleConfirm = (id) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, status: 'confirmed' } : a));
-    showToast("Activity confirmed and added to 2024-25 appraisal record!");
+    showToast('Activity confirmed and added to 2024-25 appraisal record!');
   };
 
   const handleIgnore = (id) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, status: 'ignored' } : a));
-    showToast("Activity excluded from appraisal.");
+    showToast('Activity excluded from appraisal.');
   };
 
   const handleScanAgain = () => {
     setIsScanning(true);
     setTimeout(() => {
       setIsScanning(false);
-      showToast("Auto-Scan Complete! Synced with Google Scholar, ORCID & Gmail.");
+      showToast('Auto-Scan Complete! Synced with connected sources.');
     }, 1500);
   };
 
@@ -39,350 +61,209 @@ export default function ReconstructMyYear({ setCurrentView }) {
   const reviewCount = activities.filter(a => a.status === 'review').length;
   const ignoredCount = activities.filter(a => a.status === 'ignored').length;
 
-  const donutColors = ['#FD6F3B', '#10B981', '#F59E0B', '#3B82F6', '#EC4899'];
+  const donutColors = chartPalette();
 
   return (
-    <div className="space-y-6 pb-12">
-      
-      {/* Toast Notification */}
+    <motion.div {...pageEnter} className="space-y-6 pb-12">
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl text-base font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-[var(--radius-card)] bg-[var(--brand-ink)] px-4 py-3 text-sm font-semibold text-white shadow-[var(--shadow-raised)]">
+          <CheckCircle2 className="h-4 w-4 text-[var(--brand-mint-strong)]" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setCurrentView('dashboard')}
-            className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-700" />
+      <PageHeader
+        title="Reconstruct My Year"
+        subtitle="We scan your connected sources and help you rebuild your academic year. Review and confirm before anything is added."
+        breadcrumb={
+          <button type="button" onClick={() => setCurrentView('dashboard')} className="btn btn-ghost btn-sm mb-2 -ml-2">
+            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
           </button>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Reconstruct My Year
-            </h1>
-            <p className="text-base text-slate-500 mt-0.5">
-              We scan your activities from multiple sources and help you rebuild your academic year.
-            </p>
-          </div>
-        </div>
+        }
+        actions={
+          <Button variant="primary" onClick={handleScanAgain} disabled={isScanning}>
+            <RefreshCw className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />
+            {isScanning ? 'Scanning integrations…' : 'Scan Again'}
+          </Button>
+        }
+      />
 
-        <button
-          onClick={handleScanAgain}
-          disabled={isScanning}
-          className="px-4 py-2 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-xl text-base font-bold shadow-md shadow-orange-500/20 flex items-center gap-2 transition-all self-start sm:self-auto disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-          <span>{isScanning ? 'Scanning Integrations...' : 'Scan Again'}</span>
-        </button>
+      {/* Connected sources */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {SOURCE_CARDS.map((source) => {
+          const Icon = source.icon;
+          return (
+            <div key={source.name} className="app-surface flex flex-wrap items-center justify-between gap-2 !rounded-[var(--radius-card)] p-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={`icon-chip !h-8 !w-8 ${source.chip}`}>
+                  <Icon className="h-4 w-4" style={source.brandColor ? { color: source.brandColor } : undefined} />
+                </span>
+                <div className="min-w-0">
+                  <h4 className="truncate text-sm font-bold text-[var(--brand-ink)]">{source.name}</h4>
+                  <p className="text-xs font-medium text-[var(--brand-subtle)]">{source.count} activities</p>
+                </div>
+              </div>
+              <span className="chip chip-mint !border-0 !px-2 !py-0 !text-[11px]">
+                <CheckCircle2 className="h-3 w-3" /> Scanned
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* 5 Integration Source Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="p-3 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
-              <SiGmail className="w-4 h-4" style={{ color: '#EA4335' }} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-lg font-bold text-slate-800">Gmail</h4>
-              <p className="text-base text-slate-400">6 activities</p>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <CheckCircle2 className="w-3 h-3" /> Scanned
-          </span>
-        </div>
-
-        <div className="p-3 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-              <SiGooglecalendar className="w-4 h-4" style={{ color: '#4285F4' }} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-lg font-bold text-slate-800">Calendar</h4>
-              <p className="text-base text-slate-400">5 activities</p>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <CheckCircle2 className="w-3 h-3" /> Scanned
-          </span>
-        </div>
-
-        <div className="p-3 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-              <SiGoogledrive className="w-4 h-4" style={{ color: '#4285F4' }} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-lg font-bold text-slate-800">Drive</h4>
-              <p className="text-base text-slate-400">3 activities</p>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <CheckCircle2 className="w-3 h-3" /> Scanned
-          </span>
-        </div>
-
-        <div className="p-3 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-lime-50 flex items-center justify-center shrink-0">
-              <SiOrcid className="w-4 h-4" style={{ color: '#A6CE39' }} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-lg font-bold text-slate-800">ORCID</h4>
-              <p className="text-base text-slate-400">2 activities</p>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <CheckCircle2 className="w-3 h-3" /> Scanned
-          </span>
-        </div>
-
-        <div className="p-3 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2 col-span-2 sm:col-span-1">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-orange-50 text-[#FD6F3B] flex items-center justify-center shrink-0">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-lg font-bold text-slate-800">Student Records</h4>
-              <p className="text-base text-slate-400">2 activities</p>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <CheckCircle2 className="w-3 h-3" /> Scanned
-          </span>
-        </div>
-      </div>
-
-      {/* Main 2-Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column - Recovered Activities List */}
-        <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <motion.section {...cardEnter} className="app-surface space-y-5 p-6 lg:col-span-8">
+          <div className="flex flex-col justify-between gap-2 border-b border-[var(--brand-border-soft)] pb-4 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Recovered Activities</h2>
-              <p className="text-base text-slate-500">Review and confirm the activities to include in your academic year.</p>
+              <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Recovered Activities</h2>
+              <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Review and confirm the activities to include in your academic year.</p>
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-base font-semibold">
-                <Filter className="w-4 h-4" />
-                <span>Filters</span>
-              </button>
-              <select className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-base font-semibold outline-none border border-slate-200">
-                <option>Most recent</option>
-                <option>By Category</option>
-                <option>By Source</option>
-              </select>
-            </div>
+            <span className="chip chip-surface self-start sm:self-auto">Demo preview</span>
           </div>
 
-          {/* Activities List */}
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {activities.map((item) => (
-              <div 
-                key={item.id} 
-                className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-4 ${
-                  item.status === 'confirmed' ? 'bg-emerald-50/40 border-emerald-200' :
-                  item.status === 'ignored' ? 'bg-slate-50 border-slate-200 opacity-60' :
-                  'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-2xs'
+              <div
+                key={item.id}
+                className={`flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border p-4 transition sm:flex-row sm:flex-wrap sm:items-center ${
+                  item.status === 'confirmed'
+                    ? 'border-[var(--brand-mint-strong)] bg-[var(--brand-success-soft)]'
+                    : item.status === 'ignored'
+                      ? 'border-[var(--brand-border)] bg-[var(--brand-surface-muted)] opacity-60'
+                      : 'border-[var(--brand-border-soft)] bg-[var(--brand-surface)] hover:border-[var(--brand-lavender-strong)] hover:shadow-[var(--shadow-soft)]'
                 }`}
               >
-                <div className="flex items-start gap-3.5 min-w-0">
-                  <div className="text-center shrink-0 w-16 pt-1">
-                    <span className="block text-xs font-extrabold text-slate-500 uppercase">{item.date}</span>
-                  </div>
-
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-lg font-extrabold text-slate-900">{item.title}</h4>
-                      <span className="text-xs font-bold px-2 py-0.5 bg-orange-100 text-orange-950 rounded-full">
-                        {item.description}
-                      </span>
+                <div className="flex min-w-0 items-start gap-3.5">
+                  <span className="chip chip-lavender w-16 shrink-0 justify-center !px-2 text-center uppercase">{item.date}</span>
+                  <div className="min-w-0 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-base font-extrabold text-[var(--brand-ink)]">{item.title}</h4>
+                      <span className={`chip chip-${CATEGORY_TONES[item.category] || 'surface'} !border-0 !text-[11px]`}>{item.description}</span>
                       {item.status === 'confirmed' && (
-                        <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Confirmed
-                        </span>
+                        <span className="chip chip-mint !border-0 !text-[11px]"><CheckCircle2 className="h-3 w-3" /> Confirmed</span>
                       )}
                     </div>
-                    <p className="text-base text-slate-500">{item.type}</p>
-                    
-                    {/* Evidence Source Pills */}
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <span className="text-base font-bold text-slate-400">Evidence:</span>
-                      {item.sources.map(src => (
-                        <span key={src} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-base font-semibold rounded-md">
-                          {src}
-                        </span>
+                    <p className="text-sm font-medium text-[var(--brand-muted)]">{item.type}</p>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="text-xs font-bold text-[var(--brand-subtle)]">Evidence:</span>
+                      {item.sources.map((src) => (
+                        <span key={src} className="rounded-md bg-[var(--brand-surface-muted)] px-2 py-0.5 text-xs font-semibold text-[var(--brand-muted)]">{src}</span>
                       ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
                   {item.status !== 'confirmed' && (
-                    <button
-                      onClick={() => handleConfirm(item.id)}
-                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-base font-bold flex items-center gap-1 transition-all"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>Confirm</span>
-                    </button>
+                    <Button variant="success" size="sm" onClick={() => handleConfirm(item.id)}>
+                      <Check className="h-4 w-4" /> Confirm
+                    </Button>
                   )}
-                  <button
-                    onClick={() => alert(`Editing activity: ${item.title}`)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-base font-semibold flex items-center gap-1 transition-all"
-                  >
-                    <Edit2 className="w-4 h-4 text-slate-500" />
-                    <span>Edit</span>
-                  </button>
+                  <Button variant="secondary" size="sm" onClick={() => showToast(`Editing "${item.title}" opens in the activity form once sources are live.`)}>
+                    <Edit2 className="h-3.5 w-3.5" /> Edit
+                  </Button>
                   {item.status !== 'ignored' && (
-                    <button
-                      onClick={() => handleIgnore(item.id)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-xl text-base font-semibold flex items-center gap-1 transition-all"
-                    >
-                      <X className="w-4 h-4" />
-                      <span>Ignore</span>
-                    </button>
+                    <Button variant="ghost" size="sm" onClick={() => handleIgnore(item.id)} className="hover:!bg-[var(--brand-danger-soft)] hover:!text-[var(--brand-rose-ink)]">
+                      <X className="h-4 w-4" /> Ignore
+                    </Button>
                   )}
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="text-center pt-2">
-            <button className="text-base font-bold text-[#FD6F3B] hover:text-[#E05320] inline-flex items-center gap-1">
-              <span>Show 12 more activities</span>
-              <ChevronDown className="w-4 h-4" />
+          <div className="pt-1 text-center">
+            <button type="button" onClick={() => showToast('More recovered items appear here after a live scan.')} className="inline-flex items-center gap-1 text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
+              <span>Show more activities</span>
+              <ChevronDown className="h-4 w-4" />
             </button>
           </div>
-        </div>
+        </motion.section>
 
-        {/* Right Column - Summaries & Analytics */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Reconstruction Summary Box */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Reconstruction Summary</h3>
-
+        <motion.aside {...cardEnter} className="space-y-6 lg:col-span-4">
+          <section className="app-surface space-y-4 p-6">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Reconstruction Summary</h3>
             <div className="space-y-2.5">
-              <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100 flex items-center justify-between">
+              <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--brand-mint-strong)] bg-[var(--brand-success-soft)] p-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand-success)] text-white"><CheckCircle2 className="h-4 w-4" /></span>
                   <div>
-                    <h4 className="text-lg font-bold text-slate-800">Ready to add</h4>
-                    <p className="text-base text-slate-500">Confirmed and ready to include</p>
+                    <h4 className="text-sm font-bold text-[var(--brand-ink)]">Ready to add</h4>
+                    <p className="text-xs font-medium text-[var(--brand-muted)]">Confirmed and ready to include</p>
                   </div>
                 </div>
-                <span className="text-lg font-extrabold text-emerald-800">{readyCount}</span>
+                <span className="text-lg font-extrabold text-[var(--brand-mint-ink)]">{readyCount}</span>
               </div>
-
-              <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-100 flex items-center justify-between">
+              <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--brand-butter-strong)] bg-[var(--brand-warning-soft)] p-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center">
-                    <Clock className="w-4 h-4" />
-                  </div>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand-warning)] text-white"><Clock className="h-4 w-4" /></span>
                   <div>
-                    <h4 className="text-lg font-bold text-slate-800">Needs review</h4>
-                    <p className="text-base text-slate-500">Please review and confirm</p>
+                    <h4 className="text-sm font-bold text-[var(--brand-ink)]">Needs review</h4>
+                    <p className="text-xs font-medium text-[var(--brand-muted)]">Please review and confirm</p>
                   </div>
                 </div>
-                <span className="text-lg font-extrabold text-amber-800">{reviewCount}</span>
+                <span className="text-lg font-extrabold text-[var(--brand-butter-ink)]">{reviewCount}</span>
               </div>
-
-              <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-between">
+              <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--brand-border)] bg-[var(--brand-surface-muted)] p-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center">
-                    <XCircle className="w-4 h-4" />
-                  </div>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand-subtle)] text-white"><XCircle className="h-4 w-4" /></span>
                   <div>
-                    <h4 className="text-lg font-bold text-slate-800">Ignored</h4>
-                    <p className="text-base text-slate-500">Excluded from this year</p>
+                    <h4 className="text-sm font-bold text-[var(--brand-ink)]">Ignored</h4>
+                    <p className="text-xs font-medium text-[var(--brand-muted)]">Excluded from this year</p>
                   </div>
                 </div>
-                <span className="text-lg font-extrabold text-slate-600">{ignoredCount}</span>
+                <span className="text-lg font-extrabold text-[var(--brand-muted)]">{ignoredCount}</span>
               </div>
             </div>
-
-            <button
-              onClick={() => showToast("All 12 confirmed activities added to your annual appraisal record!")}
-              className="w-full py-3 bg-[#FD6F3B] hover:bg-[#E05320] text-white rounded-xl text-base font-bold shadow-md shadow-orange-500/20 transition-all active:scale-95"
-            >
+            <Button variant="primary" className="w-full" onClick={() => showToast(`All ${readyCount} confirmed activities added to your annual appraisal record!`)}>
               Add {readyCount} Activities to My Year
+            </Button>
+            <button type="button" onClick={() => showToast('Exporting suggestions to CSV...')} className="flex w-full items-center justify-center gap-1.5 text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
+              <Download className="h-4 w-4" /> Export Suggestions
             </button>
+          </section>
 
-            <button 
-              onClick={() => showToast("Exporting AI suggestions to CSV...")}
-              className="w-full text-center text-base font-bold text-[#FD6F3B] hover:text-[#E05320] flex items-center justify-center gap-1.5"
-            >
-              <Download className="w-4 h-4" />
-              <span>Export Suggestions</span>
-            </button>
-          </div>
-
-          {/* Monthly Activity Overview Stacked Bar Chart */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <section className="app-surface space-y-4 p-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Monthly Activity Overview</h3>
-              <select className="text-base font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 outline-none">
-                <option>May 2025</option>
-                <option>Apr 2025</option>
-              </select>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Monthly Activity Overview</h3>
+              <span className="chip chip-surface !text-[11px]">Demo data</span>
             </div>
-
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ReBarChart data={monthlyOverviewData}>
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} stroke="#94A3B8" fontSize={10} />
-                  <YAxis tickLine={false} axisLine={false} stroke="#94A3B8" fontSize={10} />
-                  <Tooltip />
-                  <Bar dataKey="Teaching" stackId="a" fill="#FD6F3B" />
-                  <Bar dataKey="Research" stackId="a" fill="#10B981" />
-                  <Bar dataKey="Mentoring" stackId="a" fill="#F59E0B" />
-                  <Bar dataKey="Service" stackId="a" fill="#EC4899" />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} stroke={chartVar('--brand-muted')} fontSize={10} />
+                  <YAxis tickLine={false} axisLine={false} stroke={chartVar('--brand-muted')} fontSize={10} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: 'var(--brand-primary-softer)' }} />
+                  <Bar dataKey="Teaching" stackId="a" fill={chartVar('--brand-chart-4')} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Research" stackId="a" fill={chartVar('--brand-chart-1')} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Mentoring" stackId="a" fill={chartVar('--brand-chart-2')} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Service" stackId="a" fill={chartVar('--brand-chart-3')} radius={[4, 4, 0, 0]} />
                 </ReBarChart>
               </ResponsiveContainer>
             </div>
-
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center">
+            <div className="grid grid-cols-3 gap-2 border-t border-[var(--brand-border-soft)] pt-3 text-center">
               <div>
-                <span className="block text-base font-extrabold text-slate-800">18</span>
-                <span className="text-base text-slate-500 font-medium">Total Detected</span>
+                <span className="block text-base font-extrabold text-[var(--brand-ink)]">18</span>
+                <span className="text-xs font-medium text-[var(--brand-muted)]">Total Detected</span>
               </div>
               <div>
-                <span className="block text-base font-extrabold text-emerald-600">12</span>
-                <span className="text-base text-slate-500 font-medium">Ready to Add</span>
+                <span className="block text-base font-extrabold text-[var(--brand-mint-ink)]">12</span>
+                <span className="text-xs font-medium text-[var(--brand-muted)]">Ready to Add</span>
               </div>
               <div>
-                <span className="block text-base font-extrabold text-amber-600">4</span>
-                <span className="text-base text-slate-500 font-medium">Needs Review</span>
+                <span className="block text-base font-extrabold text-[var(--brand-butter-ink)]">4</span>
+                <span className="text-xs font-medium text-[var(--brand-muted)]">Needs Review</span>
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Source Coverage Donut Chart */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Source Coverage</h3>
-            
-            <div className="flex items-center justify-between">
-              <div className="w-28 h-28 relative shrink-0">
+          <section className="app-surface space-y-4 p-6">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-muted)]">Source Coverage</h3>
+            <div className="flex items-center justify-between gap-3">
+              <div className="relative h-28 w-28 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <RePieChart>
-                    <Pie
-                      data={sourceCoverageData}
-                      innerRadius={28}
-                      outerRadius={42}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
+                    <Pie data={sourceCoverageData} innerRadius={28} outerRadius={42} paddingAngle={3} dataKey="value">
                       {sourceCoverageData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={donutColors[index % donutColors.length]} />
                       ))}
@@ -390,16 +271,15 @@ export default function ReconstructMyYear({ setCurrentView }) {
                   </RePieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-base font-extrabold text-slate-900">18</span>
-                  <span className="text-base text-slate-400 font-bold">Total</span>
+                  <span className="text-base font-extrabold text-[var(--brand-ink)]">18</span>
+                  <span className="text-xs font-bold text-[var(--brand-subtle)]">Total</span>
                 </div>
               </div>
-
-              <div className="space-y-1 text-base font-semibold text-slate-600 flex-1 pl-3">
+              <div className="flex-1 space-y-1 text-xs font-semibold text-[var(--brand-muted)]">
                 {sourceCoverageData.map((src, i) => (
-                  <div key={src.name} className="flex justify-between items-center">
+                  <div key={src.name} className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: donutColors[i] }}></span>
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: donutColors[i % donutColors.length] }} />
                       {src.name}
                     </span>
                     <span>{src.value} ({src.percentage})</span>
@@ -407,71 +287,38 @@ export default function ReconstructMyYear({ setCurrentView }) {
                 ))}
               </div>
             </div>
-          </div>
-
-        </div>
-
+          </section>
+        </motion.aside>
       </div>
 
-      {/* Bottom Full Width Year Summary */}
-      <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-        <div>
-          <h3 className="text-xl font-bold text-slate-800">Year Summary <span className="text-base text-slate-400 font-normal">(After Adding Confirmed Activities)</span></h3>
+      {/* Year summary (fixture preview of post-confirm state) */}
+      <motion.section {...cardEnter} className="app-surface space-y-4 p-6">
+        <h3 className="text-xl font-extrabold text-[var(--brand-ink)]">
+          Year Summary <span className="text-sm font-medium text-[var(--brand-subtle)]">(after adding confirmed activities)</span>
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: 'Teaching', count: 32, trend: '14% vs last year', up: true, chip: 'chip-sky' },
+            { label: 'Research', count: 47, trend: '22% vs last year', up: true, chip: 'chip-lavender' },
+            { label: 'Mentoring', count: 20, trend: '11% vs last year', up: true, chip: 'chip-mint' },
+            { label: 'Service', count: 15, trend: '5% vs last year', up: false, chip: 'chip-peach' },
+          ].map((card) => (
+            <div key={card.label} className="flex items-center justify-between gap-2 rounded-[var(--radius-card)] border border-[var(--brand-border-soft)] bg-[var(--brand-canvas-soft)] p-4">
+              <div className="min-w-0">
+                <span className={`chip ${card.chip} !border-0 !text-[11px]`}>{card.label}</span>
+                <span className="mt-2 block text-2xl font-extrabold tracking-tight text-[var(--brand-ink)]">{card.count}</span>
+                <span className="text-xs font-medium text-[var(--brand-muted)]">Activities</span>
+              </div>
+              <span className={`chip !border-0 !text-[11px] ${card.up ? 'chip-mint' : 'chip-rose'} shrink-0`}>
+                {card.up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />} {card.trend}
+              </span>
+            </div>
+          ))}
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          <div className="p-4 bg-[#FFF4F0] rounded-2xl border border-orange-100 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-base font-bold text-orange-950 block">Teaching</span>
-              <span className="text-2xl font-extrabold text-[#FD6F3B]">32</span>
-              <span className="text-base text-slate-500 font-medium block">Activities</span>
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 shrink-0">
-              <TrendingUp className="w-3 h-3" /> 14% vs last year
-            </span>
-          </div>
-
-          <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-base font-bold text-emerald-900 block">Research</span>
-              <span className="text-2xl font-extrabold text-emerald-950">47</span>
-              <span className="text-base text-slate-500 font-medium block">Activities</span>
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 shrink-0">
-              <TrendingUp className="w-3 h-3" /> 22% vs last year
-            </span>
-          </div>
-
-          <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-100 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-base font-bold text-amber-900 block">Mentoring</span>
-              <span className="text-2xl font-extrabold text-amber-950">20</span>
-              <span className="text-base text-slate-500 font-medium block">Activities</span>
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 shrink-0">
-              <TrendingUp className="w-3 h-3" /> 11% vs last year
-            </span>
-          </div>
-
-          <div className="p-4 bg-rose-50/60 rounded-2xl border border-rose-100 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-base font-bold text-rose-900 block">Service</span>
-              <span className="text-2xl font-extrabold text-rose-950">15</span>
-              <span className="text-base text-slate-500 font-medium block">Activities</span>
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-full border border-rose-200 shrink-0">
-              <TrendingDown className="w-3 h-3" /> 5% vs last year
-            </span>
-          </div>
-
-        </div>
-
-        <p className="text-base text-slate-400">
-          * These numbers will be updated once you add the confirmed activities to your academic year.
+        <p className="text-xs font-medium text-[var(--brand-subtle)]">
+          * Preview figures update once confirmed activities join your academic year.
         </p>
-      </div>
-
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }

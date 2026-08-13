@@ -11,17 +11,48 @@ import ProfilePage from './ProfilePage';
 import EvidencePage from './EvidencePage';
 import AppraisalPage from './AppraisalPage';
 import AddActivityModal from '../components/AddActivityModal';
+import { Button, EmptyState, Skeleton } from '../components/ui';
 import { api, payloadData } from '../lib/api';
 import { clearQueryCache, invalidateQueries } from '../lib/queryCache';
 import { getSession, signOut } from '../lib/supabase';
 import { runtimeConfigMessage } from '../lib/config';
 import { useFacultyRealtime } from '../lib/realtime';
 
-function ErrorState({ message, onRetry }) {
-  return <div className="mx-auto mt-20 max-w-lg rounded-3xl border border-red-200 bg-red-50 p-8 text-center"><h1 className="text-xl font-extrabold text-red-900">Sign-in required</h1><p className="mt-2 text-sm font-medium text-red-800">{message}</p><div className="mt-5 flex justify-center gap-2"><button onClick={onRetry} className="rounded-xl bg-red-700 px-4 py-2 text-sm font-bold text-white">Retry</button><a href="/login" className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-800">Go to login</a></div></div>;
+const REALTIME_QUERY_KEYS = [['dashboard', 'faculty'], ['activities'], ['evidence'], ['appraisal'], ['notifications'], ['admin']];
+
+function AuthError({ message, onRetry }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-6">
+      <EmptyState
+        title="Sign-in required"
+        detail={message}
+        action={
+          <div className="flex justify-center gap-2">
+            <Button variant="primary" onClick={onRetry}>Retry</Button>
+            <Button variant="secondary" onClick={() => { window.location.href = '/login'; }}>Go to login</Button>
+          </div>
+        }
+      />
+    </div>
+  );
 }
 
-const REALTIME_QUERY_KEYS = [['dashboard', 'faculty'], ['activities'], ['evidence'], ['appraisal'], ['notifications'], ['admin']];
+function ShellSkeleton() {
+  return (
+    <div className="min-h-screen p-6 sm:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <Skeleton className="h-14" />
+        <Skeleton className="h-[60vh] !rounded-[var(--radius-panel)]" />
+      </div>
+    </div>
+  );
+}
+
+const DEFERRED_VIEWS = {
+  reports: { label: 'Reports', icon: BarChart3 },
+  calendar: { label: 'Academic Calendar', icon: Calendar },
+  messages: { label: 'Messages', icon: MessageSquare },
+};
 
 export default function DashboardApp() {
   const navigate = useNavigate();
@@ -33,6 +64,7 @@ export default function DashboardApp() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const loadAuth = async () => {
     setAuthLoading(true); setAuthError('');
@@ -64,24 +96,55 @@ export default function DashboardApp() {
     }
   };
 
-  if (authLoading) return <div className="min-h-screen bg-[#FAF9F7] p-8"><div className="mx-auto max-w-7xl space-y-6"><div className="h-14 animate-pulse rounded-2xl bg-white" /><div className="h-[70vh] animate-pulse rounded-3xl bg-white" /></div></div>;
-  if (authError || !profile) return <div className="min-h-screen bg-[#FAF9F7] p-6"><ErrorState message={authError || 'No authenticated profile was returned.'} onRetry={loadAuth} /></div>;
+  if (authLoading) return <ShellSkeleton />;
+  if (authError || !profile) return <AuthError message={authError || 'No authenticated profile was returned.'} onRetry={loadAuth} />;
 
-  return <div className="min-h-screen bg-[#FAF9F7] font-sans antialiased text-slate-900 selection:bg-orange-200 selection:text-orange-950">
-    <Header profile={profile} currentRole={currentRole} setCurrentView={setCurrentView} onSearch={handleGlobalSearch} onOpenAddModal={() => openAddModal()} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} onSignOut={handleSignOut} />
-    <div className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[1440px]">
-      <Sidebar profile={profile} currentView={currentView} setCurrentView={setCurrentView} currentRole={currentRole} isSidebarOpen={isSidebarOpen} />
-      <main className="min-w-0 flex-1 overflow-y-auto p-4 transition-all duration-300 sm:p-6 lg:p-8">
-        {currentRole === 'Admin' && currentView === 'admin' && <AdminPanel />}
-        {currentRole === 'Faculty' && currentView === 'dashboard' && <DashboardOverview profile={profile} setCurrentView={setCurrentView} onOpenAddModal={() => openAddModal()} />}
-        {currentRole === 'Faculty' && currentView === 'activities' && <ActivitiesSubmissions initialQuery={activitySearch} setCurrentView={setCurrentView} onOpenAddModal={openAddModal} />}
-        {currentRole === 'Faculty' && currentView === 'profile' && <ProfilePage />}
-        {currentRole === 'Faculty' && currentView === 'evidence' && <EvidencePage />}
-        {currentRole === 'Faculty' && currentView === 'appraisal' && <AppraisalPage />}
-        {currentRole === 'Faculty' && currentView === 'reconstruct' && <ReconstructMyYear setCurrentView={setCurrentView} />}
-        {currentRole === 'Faculty' && ['reports', 'calendar', 'messages'].includes(currentView) && <div className="rounded-3xl border border-slate-200/80 bg-white p-8 text-center shadow-xs"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-100 text-[#FD6F3B]">{currentView === 'reports' ? <BarChart3 className="h-7 w-7" /> : currentView === 'messages' ? <MessageSquare className="h-7 w-7" /> : currentView === 'calendar' ? <Calendar className="h-7 w-7" /> : <FolderArchive className="h-7 w-7" />}</div><h2 className="mt-4 text-xl font-extrabold text-slate-900">{currentView === 'reports' ? 'Reports' : currentView === 'calendar' ? 'Academic Calendar' : 'Messages'}</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-500">This area is deferred outside today’s compulsory scope.</p><button onClick={() => setCurrentView('dashboard')} className="mt-5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200">Back to dashboard</button></div>}
-      </main>
+  const DeferredIcon = DEFERRED_VIEWS[currentView]?.icon || FolderArchive;
+
+  return (
+    <div className="min-h-screen antialiased">
+      <Header
+        profile={profile}
+        currentRole={currentRole}
+        setCurrentView={setCurrentView}
+        onSearch={handleGlobalSearch}
+        onOpenAddModal={() => openAddModal()}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        onOpenMobileNav={() => setIsMobileNavOpen(true)}
+        onSignOut={handleSignOut}
+      />
+      <div className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[1440px]">
+        <Sidebar
+          profile={profile}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+          currentRole={currentRole}
+          isSidebarOpen={isSidebarOpen}
+          isMobileOpen={isMobileNavOpen}
+          onCloseMobile={() => setIsMobileNavOpen(false)}
+        />
+        <main className="min-w-0 flex-1 p-4 transition-all duration-300 sm:p-6 lg:p-8">
+          {currentRole === 'Admin' && currentView === 'admin' && <AdminPanel />}
+          {currentRole === 'Faculty' && currentView === 'dashboard' && <DashboardOverview profile={profile} setCurrentView={setCurrentView} onOpenAddModal={() => openAddModal()} />}
+          {currentRole === 'Faculty' && currentView === 'activities' && <ActivitiesSubmissions initialQuery={activitySearch} setCurrentView={setCurrentView} onOpenAddModal={openAddModal} />}
+          {currentRole === 'Faculty' && currentView === 'profile' && <ProfilePage />}
+          {currentRole === 'Faculty' && currentView === 'evidence' && <EvidencePage />}
+          {currentRole === 'Faculty' && currentView === 'appraisal' && <AppraisalPage />}
+          {currentRole === 'Faculty' && currentView === 'reconstruct' && <ReconstructMyYear setCurrentView={setCurrentView} />}
+          {currentRole === 'Faculty' && DEFERRED_VIEWS[currentView] && (
+            <div className="app-surface">
+              <EmptyState
+                icon={DeferredIcon}
+                title={DEFERRED_VIEWS[currentView].label}
+                detail="This area is deferred outside today's compulsory scope."
+                action={<Button variant="secondary" onClick={() => setCurrentView('dashboard')}>Back to dashboard</Button>}
+              />
+            </div>
+          )}
+        </main>
+      </div>
+      {currentRole === 'Faculty' && <AddActivityModal isOpen={isAddModalOpen} activity={editingActivity} onClose={closeAddModal} onAddSuccess={handleActivitySaved} />}
     </div>
-    {currentRole === 'Faculty' && <AddActivityModal isOpen={isAddModalOpen} activity={editingActivity} onClose={closeAddModal} onAddSuccess={handleActivitySaved} />}
-  </div>;
+  );
 }

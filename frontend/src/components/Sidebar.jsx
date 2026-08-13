@@ -1,39 +1,127 @@
 import React from 'react';
-import { FileCheck, FolderArchive, Layers, LayoutDashboard, RefreshCw, UserRound } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FileCheck, FolderArchive, Layers, LayoutDashboard, RefreshCw, UserRound, X } from 'lucide-react';
+import { Avatar } from './ui';
 
-function displayName(profile) {
-  return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member';
+function displayName(profile) { return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member'; }
+
+const FACULTY_NAV = [
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+  { id: 'activities', label: 'Activities & Record', icon: Layers },
+  { id: 'reconstruct', label: 'Reconstruct My Year', icon: RefreshCw },
+  { id: 'appraisal', label: 'Self-Appraisal', icon: FileCheck },
+  { id: 'evidence', label: 'Evidence Library', icon: FolderArchive },
+  { id: 'profile', label: 'My Profile', icon: UserRound },
+];
+const ADMIN_NAV = [{ id: 'admin', label: 'Admin Action Center', icon: LayoutDashboard }];
+
+function NavItems({ navItems, currentView, onSelect, collapsed }) {
+  return (
+    <nav className="space-y-1.5" aria-label="Primary">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const active = currentView === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            title={collapsed ? item.label : undefined}
+            aria-current={active ? 'page' : undefined}
+            className={`group flex w-full items-center rounded-[var(--radius-control)] text-left text-sm font-bold transition ${
+              active
+                ? 'bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)] shadow-[inset_3px_0_0_var(--brand-primary)]'
+                : 'text-[var(--brand-text)] hover:bg-[var(--brand-surface)] hover:text-[var(--brand-primary-hover)]'
+            } ${collapsed ? 'mx-auto h-11 w-11 justify-center' : 'gap-3 px-3 py-3'}`}
+          >
+            <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+            {!collapsed && <span>{item.label}</span>}
+          </button>
+        );
+      })}
+    </nav>
+  );
 }
 
-function initials(name) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'F';
-}
-
-export default function Sidebar({ profile, currentView, setCurrentView, currentRole, isSidebarOpen }) {
+function ProfileBlock({ profile, collapsed }) {
   const name = displayName(profile);
   const avatar = profile?.avatar_url || profile?.photo_url || profile?.faculty_profile?.photo_url;
-  const facultyNavItems = [
-    { id: 'dashboard', label: 'Overview / Dashboard', icon: LayoutDashboard },
-    { id: 'activities', label: 'Activities / Record', icon: Layers },
-    { id: 'reconstruct', label: 'Reconstruct My Year', icon: RefreshCw },
-    { id: 'appraisal', label: 'Self-Appraisal', icon: FileCheck },
-    { id: 'evidence', label: 'Evidence Library', icon: FolderArchive },
-    { id: 'profile', label: 'My Profile', icon: UserRound },
-  ];
-  const adminNavItems = [{ id: 'admin', label: 'Admin Dashboard', icon: LayoutDashboard }];
-  const navItems = currentRole === 'Admin' ? adminNavItems : facultyNavItems;
+  if (collapsed) {
+    return <div className="flex justify-center"><Avatar name={name} src={avatar} size="h-10 w-10" /></div>;
+  }
+  return (
+    <div className="app-surface flex items-center gap-3 !rounded-2xl p-3">
+      <Avatar name={name} src={avatar} size="h-10 w-10" />
+      <div className="min-w-0">
+        <h3 className="truncate text-sm font-bold text-[var(--brand-ink)]">{name}</h3>
+        <p className="truncate text-xs text-[var(--brand-muted)]">{profile?.designation || profile?.title || 'Faculty member'}</p>
+      </div>
+    </div>
+  );
+}
+
+export default function Sidebar({ profile, currentView, setCurrentView, currentRole, isSidebarOpen, isMobileOpen, onCloseMobile }) {
+  const navItems = currentRole === 'Admin' ? ADMIN_NAV : FACULTY_NAV;
+  const select = (id) => { setCurrentView(id); onCloseMobile?.(); };
 
   return (
-    <aside className={`hidden min-h-[calc(100vh-72px)] shrink-0 select-none flex-col justify-between border-r border-slate-200/80 bg-white p-4 transition-all duration-300 lg:flex ${isSidebarOpen ? 'w-72' : 'w-20'}`}>
-      <div className="space-y-6">
-        {isSidebarOpen && <p className="px-1 text-xs font-extrabold uppercase tracking-wider text-slate-400">Navigation Menu</p>}
-        <div className={`transition-all ${isSidebarOpen ? 'flex items-center gap-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3' : 'flex justify-center'}`}>
-          {avatar ? <img src={avatar} alt={name} className="h-11 w-11 shrink-0 rounded-full border-2 border-orange-300 object-cover shadow-xs" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-orange-300 bg-orange-100 font-extrabold text-[#E05320]">{initials(name)}</span>}
-          {isSidebarOpen && <div className="min-w-0 flex-1"><h3 className="truncate text-base font-bold text-slate-900">{name}</h3><p className="truncate text-sm text-slate-500">{profile?.designation || profile?.title || 'Faculty member'}</p><span className="mt-1 inline-block rounded-full border border-orange-200/60 bg-[#FFF4F0] px-2.5 py-0.5 text-xs font-bold text-[#FD6F3B]">{currentRole}</span></div>}
+    <>
+      {/* Desktop / tablet sidebar */}
+      <aside
+        className={`hidden min-h-[calc(100vh-64px)] shrink-0 flex-col justify-between border-r border-[var(--brand-border-soft)] bg-[var(--brand-canvas)] px-3 py-5 transition-all duration-300 lg:flex ${
+          isSidebarOpen ? 'w-60' : 'w-[76px]'
+        }`}
+      >
+        <div className="space-y-7">
+          <ProfileBlock profile={profile} collapsed={!isSidebarOpen} />
+          <NavItems navItems={navItems} currentView={currentView} onSelect={select} collapsed={!isSidebarOpen} />
         </div>
-        <nav className="space-y-1.5">{navItems.map((item) => { const Icon = item.icon; const active = currentView === item.id; return <button key={item.id} onClick={() => setCurrentView(item.id)} title={!isSidebarOpen ? item.label : undefined} className={`group flex w-full items-center rounded-2xl text-left text-base font-bold transition-all ${active ? 'bg-[#FD6F3B] text-white shadow-md shadow-orange-500/25' : 'text-slate-700 hover:bg-orange-50/70 hover:text-[#FD6F3B]'} ${isSidebarOpen ? 'justify-between px-4 py-3' : 'mx-auto h-11 w-11 justify-center p-0'}`}><span className="flex items-center gap-3.5"><Icon className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />{isSidebarOpen && <span>{item.label}</span>}</span>{isSidebarOpen && item.id === 'appraisal' && <span className={`rounded-md px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-orange-100 text-[#E05320]'}`}>P0</span>}</button>; })}</nav>
-      </div>
-      {isSidebarOpen && <div className="space-y-3 border-t border-slate-100 pt-4"><p className="px-1 text-xs font-semibold leading-relaxed text-slate-400">Your record, evidence and appraisal stay connected to the institution API.</p><button onClick={() => setCurrentView('profile')} className="w-full rounded-xl border border-orange-200 bg-[#FFF4F0] px-3 py-2.5 text-left text-sm font-bold text-[#E05320] hover:bg-orange-100">Keep profile current</button></div>}
-    </aside>
+        {isSidebarOpen && currentRole !== 'Admin' && (
+          <div className="rounded-[var(--radius-card)] border border-[var(--brand-lavender-strong)] bg-[var(--brand-primary-softer)] p-4">
+            <p className="text-xs font-semibold leading-relaxed text-[var(--brand-muted)]">Your record, evidence and appraisal stay connected.</p>
+            <button type="button" onClick={() => select('profile')} className="mt-3 text-xs font-bold text-[var(--brand-primary-hover)] hover:underline">
+              Keep profile current →
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {/* Mobile drawer navigation */}
+      <AnimatePresence>
+        {isMobileOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="absolute inset-0 bg-[rgb(28_27_32_/_35%)] backdrop-blur-[2px]"
+              onClick={onCloseMobile}
+            />
+            <motion.aside
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+              className="absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto border-r border-[var(--brand-border-soft)] bg-[var(--brand-canvas)] p-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-subtle)]">Menu</span>
+                <button
+                  type="button"
+                  onClick={onCloseMobile}
+                  aria-label="Close navigation"
+                  className="rounded-[var(--radius-control)] p-2 text-[var(--brand-muted)] transition hover:bg-[var(--brand-surface-muted)]"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <ProfileBlock profile={profile} collapsed={false} />
+              <NavItems navItems={navItems} currentView={currentView} onSelect={select} collapsed={false} />
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

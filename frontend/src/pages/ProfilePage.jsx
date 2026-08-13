@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, Save, UserRound } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Loader2, Save, UserRound } from 'lucide-react';
 import { api, payloadData } from '../lib/api';
 import { useApiQuery } from '../lib/queryCache';
 import { runtimeConfigMessage } from '../lib/config';
-
-const fieldClass = 'w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-[#FD6F3B] focus:outline-none focus:ring-2 focus:ring-[#FD6F3B]/20';
+import { Button, Field, Notice, Skeleton } from '../components/ui';
+import { pageEnter } from '../lib/motion';
 
 function tags(value) {
   return Array.isArray(value) ? value.join(', ') : value || '';
@@ -28,6 +29,16 @@ function asForm(profile) {
     expertise: tags(profile?.expertise),
     bio: profile?.bio || '',
   };
+}
+
+function Section({ title, description, children }) {
+  return (
+    <section className="app-surface p-6">
+      <h2 className="text-lg font-extrabold text-[var(--brand-ink)]">{title}</h2>
+      {description && <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">{description}</p>}
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
+    </section>
+  );
 }
 
 export default function ProfilePage() {
@@ -72,38 +83,80 @@ export default function ProfilePage() {
     }
   };
 
-  const fields = useMemo(() => [
-    ['full_name', 'Full name', 'text'],
-    ['employee_code', 'Employee code', 'text'],
-    ['institution_name', 'Institution', 'text'],
-    ['department_name', 'Department', 'text'],
-    ['designation', 'Designation', 'text'],
-    ['date_joined', 'Joining date', 'date'],
-    ['current_academic_year', 'Academic year', 'text'],
-    ['qualifications', 'Qualifications', 'text'],
-    ['orcid_id', 'ORCID iD', 'text'],
-    ['openalex_author_id', 'OpenAlex author ID', 'text'],
-    ['research_interests', 'Research interests (comma separated)', 'text'],
-    ['expertise', 'Expertise (comma separated)', 'text'],
-  ], []);
+  const field = useMemo(() => (key, label, type = 'text', hint) => (
+    <Field key={key} label={label} htmlFor={`profile-${key}`} hint={hint}>
+      <input id={`profile-${key}`} type={type} value={form[key]} onChange={(event) => update(key, event.target.value)} className="input" />
+    </Field>
+  ), [form]);
+
   const data = payloadData(profile.data);
   const loading = profile.loading && !data;
   const profileError = profile.error;
 
-  if (loading) return <div className="h-80 animate-pulse rounded-3xl bg-white" />;
-  if (profileError) return <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-800">{runtimeConfigMessage(profileError)} <button onClick={() => profile.refetch()} className="ml-2 underline">Retry</button></div>;
+  if (loading) return <Skeleton className="h-80 !rounded-[var(--radius-card)]" />;
+  if (profileError) {
+    return (
+      <Notice tone="error">
+        {runtimeConfigMessage(profileError)} <button type="button" onClick={() => profile.refetch()} className="ml-2 underline">Retry</button>
+      </Notice>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 pb-12">
-      <div><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-[#FD6F3B]"><UserRound className="h-6 w-6" /></div><div><h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Faculty Profile</h1><p className="mt-1 text-sm font-medium text-slate-500">Your saved profile is used by appraisal, admin review and publication discovery.</p></div></div></div>
-      <form onSubmit={save} className="space-y-6 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xs">
-        {error && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">{error}</div>}
-        {notice && <div role="status" className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800"><CheckCircle2 className="h-4 w-4" />{notice}</div>}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{fields.map(([key, label, type]) => <label key={key} className="space-y-1.5"><span className="block text-sm font-bold text-slate-700">{label}</span><input type={type} value={form[key]} onChange={(event) => update(key, event.target.value)} className={fieldClass} /></label>)}</div>
-        <label className="block space-y-1.5"><span className="text-sm font-bold text-slate-700">Email</span><input value={form.email} readOnly className={`${fieldClass} bg-slate-50 text-slate-500`} /><span className="block text-xs font-medium text-slate-400">Email is managed by Supabase Auth.</span></label>
-        <label className="block space-y-1.5"><span className="text-sm font-bold text-slate-700">Bio</span><textarea rows={5} value={form.bio} onChange={(event) => update('bio', event.target.value)} className={fieldClass} placeholder="Describe your academic focus and contribution." /></label>
-        <div className="flex justify-end border-t border-slate-100 pt-4"><button type="submit" disabled={busy} className="flex items-center gap-2 rounded-xl bg-[#FD6F3B] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#E05320] disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save profile</button></div>
+    <motion.div {...pageEnter} className="mx-auto max-w-4xl space-y-6 pb-12">
+      <div className="flex items-center gap-3.5">
+        <span className="icon-chip !h-12 !w-12 !rounded-[var(--radius-card)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)]">
+          <UserRound className="h-6 w-6" />
+        </span>
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">Faculty Profile</h1>
+          <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Your saved profile is used by appraisal, admin review and publication discovery.</p>
+        </div>
+      </div>
+
+      <form onSubmit={save} className="space-y-6">
+        {error && <Notice tone="error">{error}</Notice>}
+        {notice && <Notice tone="success">{notice}</Notice>}
+
+        <Section title="Basic details" description="Who you are and how the institution addresses you.">
+          {field('full_name', 'Full name')}
+          <Field label="Email" htmlFor="profile-email" hint="Email is managed by Supabase Auth.">
+            <input id="profile-email" value={form.email} readOnly className="input" />
+          </Field>
+        </Section>
+
+        <Section title="Institution" description="Where you work and your current role.">
+          {field('institution_name', 'Institution')}
+          {field('department_name', 'Department')}
+          {field('designation', 'Designation')}
+          {field('employee_code', 'Employee code')}
+          {field('date_joined', 'Joining date', 'date')}
+          {field('current_academic_year', 'Academic year')}
+        </Section>
+
+        <Section title="Academic identity" description="Qualifications and the identifiers publication sync relies on.">
+          {field('qualifications', 'Qualifications (comma separated)')}
+          {field('orcid_id', 'ORCID iD')}
+          {field('openalex_author_id', 'OpenAlex author ID')}
+        </Section>
+
+        <Section title="Research profile" description="Interests and expertise used for discovery and matching.">
+          {field('research_interests', 'Research interests (comma separated)')}
+          {field('expertise', 'Expertise (comma separated)')}
+          <div className="md:col-span-2">
+            <Field label="Bio" htmlFor="profile-bio">
+              <textarea id="profile-bio" rows={5} value={form.bio} onChange={(event) => update('bio', event.target.value)} className="input" placeholder="Describe your academic focus and contribution." />
+            </Field>
+          </div>
+        </Section>
+
+        <div className="flex justify-end">
+          <Button variant="primary" size="lg" type="submit" disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save profile
+          </Button>
+        </div>
       </form>
-    </div>
+    </motion.div>
   );
 }
