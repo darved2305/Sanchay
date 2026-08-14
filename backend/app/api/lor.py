@@ -88,6 +88,129 @@ async def add_student_achievement(
     return {"id": achievement_id}
 
 
+@students_router.get("/outcomes")
+async def search_student_outcomes(
+    company: str | None = None,
+    outcome_type: str | None = None,
+    academic_year: str | None = None,
+    completion_status: str | None = None,
+    student: str | None = None,
+    user: CurrentUser = Depends(require_faculty),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Student Outcome Intelligence institution-wide search (product expansion
+    §16): OJT/internship/placement/research-internship records, extracted
+    automatically from Repository uploads by the same classification pipeline
+    as document taxonomy, filterable by company/type/year/status/student."""
+
+    institution_id = institution_id_or_403(user)
+    clauses = ["p.institution_id = :institution_id"]
+    params: dict[str, Any] = {"institution_id": institution_id}
+    if company:
+        clauses.append("so.company ilike :company")
+        params["company"] = f"%{company}%"
+    if outcome_type:
+        clauses.append("so.outcome_type = cast(:outcome_type as outcome_type)")
+        params["outcome_type"] = outcome_type
+    if academic_year:
+        clauses.append("so.academic_year = :academic_year")
+        params["academic_year"] = academic_year
+    if completion_status:
+        clauses.append("so.completion_status = cast(:completion_status as outcome_completion_status)")
+        params["completion_status"] = completion_status
+    if student:
+        clauses.append("sr.full_name ilike :student")
+        params["student"] = f"%{student}%"
+    result = await session.execute(
+        text(
+            f"""
+            select so.id, so.student_id, sr.full_name as student_name, sr.roll_number, so.company, so.role,
+                   so.outcome_type::text as outcome_type, so.offer_date, so.start_date, so.end_date,
+                   so.completion_status::text as completion_status, so.academic_year, so.confidence,
+                   so.evidence_id, so.mentor_activity_id, so.created_at
+            from public.student_outcomes so
+            join public.student_records sr on sr.id = so.student_id
+            join public.profiles p on p.id = sr.created_by
+            where {' and '.join(clauses)}
+            order by so.created_at desc
+            limit 200
+            """
+        ),
+        params,
+    )
+    items = rows_to_dicts(result.mappings().all())
+    companies: dict[str, int] = {}
+    for item in items:
+        if item.get("company"):
+            companies[item["company"]] = companies.get(item["company"], 0) + 1
+    return {"items": items, "company_counts": companies}
+
+
+@students_router.post("/outcomes/{outcome_id}/confirm-mentorship")
+async def confirm_student_outcome_mentorship(
+    outcome_id: UUID,
+    user: CurrentUser = Depends(require_faculty),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """§17: mentor credit is proposed, never silent. Only the faculty member
+    actually linked to the student can confirm it into a real
+    academic_activities(category=mentorship) record -- mirrors the
+    event_participants confirmation pattern used by Shared Academic Facts."""
+
+    outcome_result = await session.execute(
+        text(
+            """
+            select so.id, so.company, so.role, so.outcome_type::text as outcome_type, so.start_date, so.end_date,
+                   so.mentor_activity_id, sr.full_name as student_name
+            from public.student_outcomes so
+            join public.student_records sr on sr.id = so.student_id
+            join public.faculty_student_links l on l.student_id = so.student_id and l.faculty_id = :faculty_id
+            where so.id = :id
+            """
+        ),
+        {"id": outcome_id, "faculty_id": user.user_id},
+    )
+    outcome = outcome_result.mappings().first()
+    if outcome is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outcome not found, or you are not linked to this student")
+    if outcome["mentor_activity_id"] is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mentorship credit already confirmed")
+    title = f"Mentored {outcome['student_name']} — {outcome['outcome_type'].replace('_', ' ').title()}"
+    if outcome["company"]:
+        title += f" at {outcome['company']}"
+    academic_year = None
+    if outcome["start_date"]:
+        from ..core.academic_year import derive_academic_year
+
+        academic_year = derive_academic_year(outcome["start_date"])
+    activity_result = await session.execute(
+        text(
+            """
+            insert into public.academic_activities (owner_id, category, title, organization, role, start_date, end_date, academic_year, status, source, confidence, confirmed_at)
+            values (:owner_id, 'mentorship', :title, :organization, :role, :start_date, :end_date, :academic_year, 'confirmed', 'evidence_import', :confidence, now())
+            returning id
+            """
+        ),
+        {
+            "owner_id": user.user_id,
+            "title": title,
+            "organization": outcome["company"],
+            "role": outcome["role"],
+            "start_date": outcome["start_date"],
+            "end_date": outcome["end_date"],
+            "academic_year": academic_year or "unspecified",
+            "confidence": 0.9,
+        },
+    )
+    activity_id = activity_result.scalar_one()
+    await session.execute(
+        text("update public.student_outcomes set mentor_confirmed_by = :faculty_id, mentor_activity_id = :activity_id, updated_at = now() where id = :id"),
+        {"faculty_id": user.user_id, "activity_id": activity_id, "id": outcome_id},
+    )
+    await session.commit()
+    return {"activity_id": activity_id}
+
+
 async def _grounding_facts(session: AsyncSession, faculty_id: UUID, student_id: UUID, purpose: str) -> dict[str, Any]:
     student_result = await session.execute(text("select full_name from public.student_records where id = :id"), {"id": student_id})
     student_name = student_result.scalar_one_or_none()

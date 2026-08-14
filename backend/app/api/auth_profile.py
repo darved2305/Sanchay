@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -91,6 +90,8 @@ async def update_profile(
         "open_to_mentorship",
         "open_to_collaboration",
         "accepting_phd_inquiries",
+        "open_to_grant_collaboration",
+        "open_to_reviewing",
     }
     faculty_fields = {
         "employee_code",
@@ -163,7 +164,8 @@ async def update_profile(
             select id, role::text as role, full_name, email, phone, photo_url, bio,
                    institution_id, department_id, research_interests, teaching_interests,
                    expertise, career_goals, open_to_mentorship, open_to_collaboration,
-                   accepting_phd_inquiries, onboarding_completed_at, created_at, updated_at
+                   accepting_phd_inquiries, open_to_grant_collaboration, open_to_reviewing,
+                   onboarding_completed_at, created_at, updated_at
             from public.profiles where id = :profile_id
             """
         ),

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import PurePath
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text

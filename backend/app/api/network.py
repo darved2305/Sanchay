@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -13,12 +14,15 @@ from ..core.auth import CurrentUser, require_faculty
 from ..core.db import get_db
 from ..services.network import rank_candidates
 from .schemas import (
+    CollaborationMemberAdd,
+    CollaborationWorkspaceCreate,
     CommunityCreate,
     CommunityPostCreate,
     ConnectionRequestCreate,
     ConnectionRespondRequest,
     MessageCreate,
     PostCommentCreate,
+    ReactionRequest,
 )
 from .utils import rows_to_dicts
 
@@ -28,6 +32,7 @@ messages_router = APIRouter(prefix="/messages", tags=["network"])
 PROFILE_COLUMNS = """
     p.id, p.full_name, p.photo_url, p.bio, p.research_interests, p.expertise,
     p.open_to_mentorship, p.open_to_collaboration, p.accepting_phd_inquiries,
+    p.open_to_grant_collaboration, p.open_to_reviewing,
     i.name as institution_name, d.name as department_name, fp.designation
 """
 
@@ -53,7 +58,7 @@ async def _connection_state(session: AsyncSession, user_id: UUID, other_id: UUID
 async def search_people(
     q: str | None = Query(default=None, max_length=200),
     research_area: str | None = Query(default=None, max_length=200),
-    open_to: str | None = Query(default=None, pattern="^(mentorship|collaboration|phd)$"),
+    open_to: str | None = Query(default=None, pattern="^(mentorship|collaboration|phd|grant_collaboration|reviewing)$"),
     limit: int = Query(default=25, ge=1, le=100),
     user: CurrentUser = Depends(require_faculty),
     session: AsyncSession = Depends(get_db),
@@ -73,6 +78,10 @@ async def search_people(
         clauses.append("p.open_to_collaboration = true")
     elif open_to == "phd":
         clauses.append("p.accepting_phd_inquiries = true")
+    elif open_to == "grant_collaboration":
+        clauses.append("p.open_to_grant_collaboration = true")
+    elif open_to == "reviewing":
+        clauses.append("p.open_to_reviewing = true")
     result = await session.execute(
         text(
             f"""
@@ -95,7 +104,7 @@ async def search_people(
 
 @router.get("/recommendations")
 async def get_recommendations(
-    intent: str | None = Query(default=None, pattern="^(mentor|phd_supervisor|collaborator)$"),
+    intent: str | None = Query(default=None, pattern="^(mentor|phd_supervisor|collaborator|grant_collaborator|reviewer)$"),
     user: CurrentUser = Depends(require_faculty),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -258,11 +267,14 @@ async def get_feed(user: CurrentUser = Depends(require_faculty), session: AsyncS
     result = await session.execute(
         text(
             """
-            select post.id, post.kind::text as kind, post.body, post.created_at, post.community_id,
+            select post.id, post.kind::text as kind, post.body, post.collaboration_payload, post.created_at, post.community_id,
                    author.id as author_id, author.full_name as author_name, author.photo_url as author_photo_url,
                    c.name as community_name,
                    (select count(*) from public.post_comments pc where pc.post_id = post.id)::int as comment_count,
                    (select count(*) from public.post_reactions pr where pr.post_id = post.id)::int as reaction_count,
+                   (select count(*) from public.post_interests pi where pi.post_id = post.id)::int as interest_count,
+                   (select pr3.reaction_type from public.post_reactions pr3 where pr3.post_id = post.id and pr3.profile_id = :user_id) as my_reaction,
+                   exists(select 1 from public.post_interests pi2 where pi2.post_id = post.id and pi2.profile_id = :user_id) as interested,
                    exists(select 1 from public.post_reactions pr2 where pr2.post_id = post.id and pr2.profile_id = :user_id) as reacted
             from public.community_posts post
             join public.profiles author on author.id = post.author_id
@@ -284,13 +296,63 @@ async def create_post(payload: CommunityPostCreate, user: CurrentUser = Depends(
         member = await session.execute(text("select 1 from public.community_members where community_id = :community_id and profile_id = :profile_id"), {"community_id": payload.community_id, "profile_id": user.user_id})
         if member.first() is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Join the community before posting in it")
+    collaboration_payload = payload.collaboration_payload.model_dump() if payload.collaboration_payload else None
     result = await session.execute(
-        text("insert into public.community_posts (community_id, author_id, kind, body) values (:community_id, :author_id, cast(:kind as post_kind), :body) returning id, kind::text as kind, body, created_at"),
-        {"community_id": payload.community_id, "author_id": user.user_id, "kind": payload.kind.value, "body": payload.body},
+        text(
+            "insert into public.community_posts (community_id, author_id, kind, body, collaboration_payload) "
+            "values (:community_id, :author_id, cast(:kind as post_kind), :body, cast(:collaboration_payload as jsonb)) "
+            "returning id, kind::text as kind, body, collaboration_payload, created_at"
+        ),
+        {
+            "community_id": payload.community_id, "author_id": user.user_id, "kind": payload.kind.value, "body": payload.body,
+            "collaboration_payload": json.dumps(collaboration_payload) if collaboration_payload is not None else None,
+        },
     )
     row = result.mappings().first()
     await session.commit()
     return dict(row)
+
+
+@router.post("/posts/{post_id}/interest")
+async def express_interest(post_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """"Express Interest" on a collaboration post (§39). Realtime-notifies the
+    author; the author decides whether to connect/message/start a workspace --
+    never automatic."""
+
+    post_result = await session.execute(text("select author_id, body from public.community_posts where id = :id"), {"id": post_id})
+    post = post_result.mappings().first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    inserted = await session.execute(
+        text("insert into public.post_interests (post_id, profile_id) values (:post_id, :profile_id) on conflict do nothing returning post_id"),
+        {"post_id": post_id, "profile_id": user.user_id},
+    )
+    if inserted.scalar_one_or_none() is not None and post["author_id"] != user.user_id:
+        await session.execute(
+            text(
+                "insert into public.notifications (profile_id, kind, title, body, link_path) "
+                "values (:profile_id, 'collaboration_interest', 'Someone is interested in your collaboration post', :body, '/faculty/community')"
+            ),
+            {"profile_id": post["author_id"], "body": (post["body"] or "")[:200]},
+        )
+    await session.commit()
+    return {"ok": True}
+
+
+@router.get("/posts/{post_id}/interested")
+async def list_interested(post_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    result = await session.execute(
+        text(
+            """
+            select p.id, p.full_name, p.photo_url, p.bio, i.name as institution_name
+            from public.post_interests pi join public.profiles p on p.id = pi.profile_id
+            left join public.institutions i on i.id = p.institution_id
+            where pi.post_id = :post_id order by pi.created_at
+            """
+        ),
+        {"post_id": post_id},
+    )
+    return {"items": rows_to_dicts(result.mappings().all())}
 
 
 @router.post("/posts/{post_id}/comments")
@@ -320,8 +382,16 @@ async def list_comments(post_id: UUID, user: CurrentUser = Depends(require_facul
 
 
 @router.put("/posts/{post_id}/reaction")
-async def add_reaction(post_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
-    await session.execute(text("insert into public.post_reactions (post_id, profile_id) values (:post_id, :profile_id) on conflict do nothing"), {"post_id": post_id, "profile_id": user.user_id})
+async def add_reaction(
+    post_id: UUID, payload: ReactionRequest = ReactionRequest(), user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, bool]:
+    await session.execute(
+        text(
+            "insert into public.post_reactions (post_id, profile_id, reaction_type) values (:post_id, :profile_id, :reaction_type) "
+            "on conflict (post_id, profile_id) do update set reaction_type = excluded.reaction_type"
+        ),
+        {"post_id": post_id, "profile_id": user.user_id, "reaction_type": payload.reaction_type},
+    )
     await session.commit()
     return {"ok": True}
 
@@ -329,6 +399,130 @@ async def add_reaction(post_id: UUID, user: CurrentUser = Depends(require_facult
 @router.delete("/posts/{post_id}/reaction")
 async def remove_reaction(post_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
     await session.execute(text("delete from public.post_reactions where post_id = :post_id and profile_id = :profile_id"), {"post_id": post_id, "profile_id": user.user_id})
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/follow/{profile_id}")
+async def follow_profile(profile_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+    if profile_id == user.user_id:
+        raise HTTPException(status_code=422, detail="Cannot follow yourself")
+    await session.execute(
+        text("insert into public.follows (follower_id, followed_id) values (:follower_id, :followed_id) on conflict do nothing"),
+        {"follower_id": user.user_id, "followed_id": profile_id},
+    )
+    await session.commit()
+    return {"ok": True}
+
+
+@router.delete("/follow/{profile_id}")
+async def unfollow_profile(profile_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+    await session.execute(text("delete from public.follows where follower_id = :follower_id and followed_id = :followed_id"), {"follower_id": user.user_id, "followed_id": profile_id})
+    await session.commit()
+    return {"ok": True}
+
+
+@router.get("/collaboration-workspaces")
+async def list_collaboration_workspaces(user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    result = await session.execute(
+        text(
+            """
+            select w.id, w.title, w.research_area, w.goal, w.stage::text as stage, w.created_by, w.created_at,
+                   (select count(*) from public.collaboration_members m where m.workspace_id = w.id)::int as member_count
+            from public.collaboration_workspaces w
+            where w.created_by = :uid or exists(select 1 from public.collaboration_members m where m.workspace_id = w.id and m.profile_id = :uid)
+            order by w.updated_at desc
+            """
+        ),
+        {"uid": user.user_id},
+    )
+    return {"items": rows_to_dicts(result.mappings().all())}
+
+
+@router.post("/collaboration-workspaces")
+async def create_collaboration_workspace(
+    payload: CollaborationWorkspaceCreate, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Lightweight collaboration workspace (§42) -- members, goal, stage, and
+    a pointer back to the originating post/messages/grant. Deliberately does
+    not duplicate messaging/documents/tasks, which already exist elsewhere."""
+
+    result = await session.execute(
+        text(
+            "insert into public.collaboration_workspaces (title, research_area, goal, source_post_id, created_by) "
+            "values (:title, :research_area, :goal, :source_post_id, :created_by) returning id"
+        ),
+        {"title": payload.title, "research_area": payload.research_area, "goal": payload.goal, "source_post_id": payload.source_post_id, "created_by": user.user_id},
+    )
+    workspace_id = result.scalar_one()
+    await session.execute(
+        text("insert into public.collaboration_members (workspace_id, profile_id, role) values (:workspace_id, :profile_id, 'lead') on conflict do nothing"),
+        {"workspace_id": workspace_id, "profile_id": user.user_id},
+    )
+    await session.commit()
+    return {"id": workspace_id}
+
+
+@router.get("/collaboration-workspaces/{workspace_id}")
+async def get_collaboration_workspace(workspace_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    result = await session.execute(
+        text(
+            """
+            select id, title, research_area, goal, stage::text as stage, created_by, created_at
+            from public.collaboration_workspaces w
+            where w.id = :id and (w.created_by = :uid or exists(select 1 from public.collaboration_members m where m.workspace_id = w.id and m.profile_id = :uid))
+            """
+        ),
+        {"id": workspace_id, "uid": user.user_id},
+    )
+    workspace = result.mappings().first()
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collaboration workspace not found")
+    members_result = await session.execute(
+        text(
+            "select m.profile_id, m.role, p.full_name, p.photo_url from public.collaboration_members m "
+            "join public.profiles p on p.id = m.profile_id where m.workspace_id = :id"
+        ),
+        {"id": workspace_id},
+    )
+    out = dict(workspace)
+    out["members"] = rows_to_dicts(members_result.mappings().all())
+    return out
+
+
+@router.patch("/collaboration-workspaces/{workspace_id}")
+async def update_collaboration_workspace_stage(
+    workspace_id: UUID, stage: str, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    result = await session.execute(
+        text("update public.collaboration_workspaces set stage = cast(:stage as collaboration_stage), updated_at = now() where id = :id and created_by = :uid returning id"),
+        {"stage": stage, "id": workspace_id, "uid": user.user_id},
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collaboration workspace not found")
+    await session.commit()
+    return {"id": workspace_id, "stage": stage}
+
+
+@router.post("/collaboration-workspaces/{workspace_id}/members")
+async def add_collaboration_member(
+    workspace_id: UUID, payload: CollaborationMemberAdd, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    owned = await session.execute(text("select created_by from public.collaboration_workspaces where id = :id"), {"id": workspace_id})
+    row = owned.mappings().first()
+    if row is None or row["created_by"] != user.user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collaboration workspace not found")
+    await session.execute(
+        text("insert into public.collaboration_members (workspace_id, profile_id, role) values (:workspace_id, :profile_id, :role) on conflict do nothing"),
+        {"workspace_id": workspace_id, "profile_id": payload.profile_id, "role": payload.role},
+    )
+    await session.execute(
+        text(
+            "insert into public.notifications (profile_id, kind, title, body, link_path) "
+            "values (:profile_id, 'collaboration_invite', 'Added to a collaboration workspace', 'You were added to a research collaboration workspace.', '/faculty/community')"
+        ),
+        {"profile_id": payload.profile_id},
+    )
     await session.commit()
     return {"ok": True}
 

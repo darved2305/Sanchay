@@ -93,6 +93,24 @@ export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY
       table: 'recommendation_letters',
       filter: `profile_id=eq.${profileId}`,
     }, invalidate)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'action_inbox_items',
+      filter: `profile_id=eq.${profileId}`,
+    }, invalidate)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'grant_workspaces',
+      filter: `owner_id=eq.${profileId}`,
+    }, invalidate)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'custom_career_goals',
+      filter: `profile_id=eq.${profileId}`,
+    }, invalidate)
     // connection_requests/messages/community_posts RLS is join/OR-based
     // (participant of a conversation, member of a community, sender OR
     // recipient), not a single equality column -- Realtime's filter syntax
@@ -114,6 +132,8 @@ export function subscribeToFacultyUpdates({ profileId, queryKeys = DEFAULT_QUERY
     }, invalidate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, invalidate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, invalidate)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_interests' }, invalidate)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'collaboration_workspaces' }, invalidate)
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') stopPolling();
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') startPolling();

@@ -28,8 +28,21 @@ function asForm(profile) {
     research_interests: tags(profile?.research_interests),
     expertise: tags(profile?.expertise),
     bio: profile?.bio || '',
+    open_to_mentorship: !!profile?.open_to_mentorship,
+    open_to_collaboration: !!profile?.open_to_collaboration,
+    accepting_phd_inquiries: !!profile?.accepting_phd_inquiries,
+    open_to_grant_collaboration: !!profile?.open_to_grant_collaboration,
+    open_to_reviewing: !!profile?.open_to_reviewing,
   };
 }
+
+const OPEN_TO_TOGGLES = [
+  { key: 'open_to_mentorship', label: 'Open to Mentorship' },
+  { key: 'open_to_collaboration', label: 'Open to Collaboration' },
+  { key: 'accepting_phd_inquiries', label: 'Accepting PhD Inquiries' },
+  { key: 'open_to_grant_collaboration', label: 'Open to Grant Collaboration' },
+  { key: 'open_to_reviewing', label: 'Open to Reviewing' },
+];
 
 function Section({ title, description, children }) {
   return (
@@ -73,6 +86,11 @@ export default function ProfilePage() {
         research_interests: form.research_interests.split(',').map((item) => item.trim()).filter(Boolean),
         expertise: form.expertise.split(',').map((item) => item.trim()).filter(Boolean),
         bio: form.bio.trim() || null,
+        open_to_mentorship: form.open_to_mentorship,
+        open_to_collaboration: form.open_to_collaboration,
+        accepting_phd_inquiries: form.accepting_phd_inquiries,
+        open_to_grant_collaboration: form.open_to_grant_collaboration,
+        open_to_reviewing: form.open_to_reviewing,
       });
       await profile.refetch();
       setNotice('Profile saved to the database.');
@@ -149,6 +167,19 @@ export default function ProfilePage() {
             </Field>
           </div>
         </Section>
+
+        <section className="app-surface p-6">
+          <h2 className="text-lg font-extrabold text-[var(--brand-ink)]">Visible in Professional Network</h2>
+          <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Controls what other faculty can find and request from you — nothing private is exposed.</p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {OPEN_TO_TOGGLES.map((t) => (
+              <label key={t.key} className="flex items-center gap-2.5 rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] p-3 text-sm font-bold text-[var(--brand-ink)]">
+                <input type="checkbox" checked={form[t.key]} onChange={(e) => update(t.key, e.target.checked)} />
+                {t.label}
+              </label>
+            ))}
+          </div>
+        </section>
 
         <div className="flex justify-end">
           <Button variant="primary" size="lg" type="submit" disabled={busy}>

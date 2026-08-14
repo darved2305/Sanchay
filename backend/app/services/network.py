@@ -15,6 +15,8 @@ INTENT_FLAGS = {
     "mentor": "open_to_mentorship",
     "phd_supervisor": "accepting_phd_inquiries",
     "collaborator": "open_to_collaboration",
+    "grant_collaborator": "open_to_grant_collaboration",
+    "reviewer": "open_to_reviewing",
 }
 
 
@@ -47,7 +49,10 @@ def score_candidate(seeker: dict[str, Any], candidate: dict[str, Any], intent: s
 
     if intent and intent in INTENT_FLAGS and candidate.get(INTENT_FLAGS[intent]):
         score += 3
-        label = {"mentor": "open to mentorship", "phd_supervisor": "accepting PhD inquiries", "collaborator": "open to collaboration"}[intent]
+        label = {
+            "mentor": "open to mentorship", "phd_supervisor": "accepting PhD inquiries", "collaborator": "open to collaboration",
+            "grant_collaborator": "open to grant collaboration", "reviewer": "open to reviewing",
+        }[intent]
         reasons.append(f"Marked {label}")
 
     return {"profile_id": candidate["id"], "score": score, "reasons": reasons}

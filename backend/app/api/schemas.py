@@ -53,6 +53,7 @@ class ActivitySource(StrEnum):
     batch_certificates = "batch_certificates"
     shared_fact = "shared_fact"
     evidence_import = "evidence_import"
+    grantops = "grantops"
 
 
 class SubmissionStatus(StrEnum):
@@ -86,6 +87,8 @@ class ProfilePatch(BaseModel):
     open_to_mentorship: bool | None = None
     open_to_collaboration: bool | None = None
     accepting_phd_inquiries: bool | None = None
+    open_to_grant_collaboration: bool | None = None
+    open_to_reviewing: bool | None = None
     designation: str | None = Field(default=None, max_length=200)
     date_joined: date | None = None
     current_academic_year: str | None = Field(default=None, max_length=30)
@@ -274,17 +277,41 @@ class PostKind(StrEnum):
     post = "post"
     question = "question"
     opportunity = "opportunity"
+    collaboration = "collaboration"
     announcement = "announcement"
+
+
+class CollaborationPayload(BaseModel):
+    research_area: str | None = Field(default=None, max_length=200)
+    looking_for: str | None = Field(default=None, max_length=200)
+    skills_needed: list[str] = Field(default_factory=list, max_length=15)
 
 
 class CommunityPostCreate(BaseModel):
     community_id: UUID | None = None
     kind: PostKind = PostKind.post
     body: str = Field(min_length=1, max_length=5000)
+    collaboration_payload: CollaborationPayload | None = None
 
 
 class PostCommentCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+
+
+class ReactionRequest(BaseModel):
+    reaction_type: Literal["like", "insightful", "celebrate"] = "like"
+
+
+class CollaborationWorkspaceCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    research_area: str | None = Field(default=None, max_length=200)
+    goal: str | None = Field(default=None, max_length=2000)
+    source_post_id: UUID | None = None
+
+
+class CollaborationMemberAdd(BaseModel):
+    profile_id: UUID
+    role: str | None = Field(default=None, max_length=100)
 
 
 class MessageCreate(BaseModel):
@@ -320,6 +347,80 @@ class EvidenceUploadRequest(BaseModel):
 
 class EvidenceAttachRequest(BaseModel):
     activity_id: UUID
+
+
+class EvidenceClassificationConfirm(BaseModel):
+    document_category: str | None = Field(default=None, max_length=60)
+    document_type: str | None = Field(default=None, max_length=120)
+
+
+class ActionInboxStatusUpdate(BaseModel):
+    action: Literal["save", "accept", "decline", "sent_to_grantops", "start_collaboration", "ignore"]
+
+
+class ActionInboxDraftRequest(BaseModel):
+    reply_type: Literal["accept", "conditional", "decline"]
+    edited_text: str | None = Field(default=None, max_length=8000)
+    polish: bool = False
+
+
+class EvidenceBulkDownloadRequest(BaseModel):
+    evidence_ids: list[UUID] | None = Field(default=None, max_length=500)
+    document_category: str | None = Field(default=None, max_length=60)
+    year: int | None = Field(default=None, ge=1900, le=2200)
+    tag: str | None = Field(default=None, max_length=100)
+
+
+class GrantOpportunityCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    agency: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    url: str | None = Field(default=None, max_length=500)
+    deadline: date | None = None
+    amount: str | None = Field(default=None, max_length=100)
+    disciplines: list[str] = Field(default_factory=list, max_length=20)
+    eligibility_rules: dict[str, Any] = Field(default_factory=dict)
+    required_documents: list[str] = Field(default_factory=list, max_length=30)
+
+
+class GrantStageUpdate(BaseModel):
+    stage: Literal[
+        "discovered", "interested", "eligibility_check", "team_formation", "preparing",
+        "internal_review", "ready_to_submit", "submitted", "awarded", "rejected",
+        "active", "completed", "archived",
+    ]
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class GrantTaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    due_date: date | None = None
+
+
+class GrantMemberInvite(BaseModel):
+    profile_id: UUID
+    role: str | None = Field(default=None, max_length=100)
+
+
+class GrantAwardRequest(BaseModel):
+    award_amount: str | None = Field(default=None, max_length=100)
+
+
+class CareerGoalParseRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=2000)
+
+
+class CareerGoalCustomCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    target_date: date | None = None
+    measurable_outcomes: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+    raw_text: str | None = Field(default=None, max_length=2000)
+    source: Literal["custom", "suggested"] = "custom"
+
+
+class CareerGoalStatusUpdate(BaseModel):
+    status: Literal["active", "dismissed", "completed"]
 
 
 class PublicationCandidateResponse(BaseModel):

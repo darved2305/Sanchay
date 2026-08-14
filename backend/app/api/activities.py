@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -14,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.auth import CurrentUser, require_faculty
 from ..core.config import Settings, get_settings
 from ..core.db import get_db
-from ..services.jobs import create_job, update_job
 from ..services.llm import LLMProvider
 from ..services.pagination import decode_cursor, page_result
 from ..services.quick_add import parse_quick_add

@@ -5,6 +5,8 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import DashboardOverview from './DashboardOverview';
 import ActivitiesSubmissions from './ActivitiesSubmissions';
+import ActionInboxPage from './ActionInboxPage';
+import GrantOpsPage from './GrantOpsPage';
 import ReconstructMyYear from './ReconstructMyYear';
 import CvImportPage from './CvImportPage';
 import CareerGrowthPage from './CareerGrowthPage';
@@ -30,7 +32,7 @@ import { useFacultyRealtime } from '../lib/realtime';
 
 const REALTIME_QUERY_KEYS = [
   ['dashboard', 'faculty'], ['activities'], ['evidence'], ['appraisal'], ['notifications'], ['admin'],
-  ['career'], ['lor'], ['reconstruct'], ['teaching'], ['community'],
+  ['career'], ['lor'], ['reconstruct'], ['teaching'], ['community'], ['action-inbox'], ['grantops'],
 ];
 
 function AuthError({ message, onRetry }) {
@@ -145,6 +147,8 @@ export default function DashboardApp() {
           {currentRole === 'Admin' && currentView === 'admin-requests' && <AdminRequestsReports />}
           {currentRole === 'Faculty' && currentView === 'dashboard' && <DashboardOverview profile={profile} setCurrentView={setCurrentView} onOpenAddModal={() => openAddModal()} />}
           {currentRole === 'Faculty' && currentView === 'activities' && <ActivitiesSubmissions initialQuery={activitySearch} setCurrentView={setCurrentView} onOpenAddModal={openAddModal} />}
+          {currentRole === 'Faculty' && currentView === 'action-inbox' && <ActionInboxPage />}
+          {currentRole === 'Faculty' && currentView === 'grantops' && <GrantOpsPage />}
           {currentRole === 'Faculty' && currentView === 'profile' && <ProfilePage />}
           {currentRole === 'Faculty' && currentView === 'evidence' && <EvidencePage />}
           {currentRole === 'Faculty' && currentView === 'appraisal' && <AppraisalPage />}

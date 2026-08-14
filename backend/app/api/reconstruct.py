@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..connectors.google import (
     CONNECTOR_PROVIDERS,
+    SCOPES,
     HarvestedItem,
     build_authorize_url,
     decrypt_token,
@@ -35,6 +36,9 @@ from ..core.db import database, get_db
 from ..services.jobs import create_job, get_job, update_job
 from ..services.llm import LLMProvider
 from ..services.reconstruct import is_academic_signal, run_pipeline
+from ..services.reconstruct_cluster import classify_and_cluster_signal, get_cached_candidates
+from ..services.signals import unprocessed_signals
+from ..services.source_sync import sync_calendar_signals, sync_drive_signals, sync_gmail_signals
 from .schemas import ReconstructRunCreate
 from .utils import rows_to_dicts
 
@@ -77,7 +81,11 @@ async def start_google_oauth(
     user: CurrentUser = Depends(require_faculty),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
-    if provider not in CONNECTOR_PROVIDERS:
+    # SCOPES (not the narrower CONNECTOR_PROVIDERS) so this same generic
+    # authorize/callback machinery also handles the gmail_compose incremental
+    # scope the Action Inbox requests separately -- one OAuth implementation,
+    # not a second one duplicated for a write-scope connection.
+    if provider not in SCOPES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown source")
     try:
         state = sign_oauth_state(settings, user.user_id, provider)
@@ -146,7 +154,7 @@ async def google_oauth_callback(
 
 @router.post("/oauth/{provider}/disconnect")
 async def disconnect_google_oauth(provider: str, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
-    if provider not in CONNECTOR_PROVIDERS:
+    if provider not in SCOPES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown source")
     await session.execute(
         text(
@@ -436,5 +444,163 @@ async def ignore_candidate(candidate_id: UUID, user: CurrentUser = Depends(requi
         text("update public.reconstruction_candidates set status = 'ignored', updated_at = now() where id = :id"),
         {"id": candidate_id},
     )
+    await session.commit()
+    return {"ok": True}
+
+
+# ---------- Performance redesign (product expansion §47-59): cache-first read + delta sync ----------
+#
+# Everything above this line is the original full-rescan-per-run pipeline,
+# kept working as-is (the fixture-mode demo path and existing confirmed-run
+# history both depend on it) and still available as an explicit manual
+# "Start a full run" action. Below is the new default fast path: it shares
+# `source_signals`/`activity_clusters`/`source_sync_state` with the Faculty
+# Action Inbox (010_signal_layer.sql) instead of re-harvesting/re-classifying
+# anything, so opening Reconstruct is a database read, and a sync only ever
+# asks Google for what changed since the last cursor.
+
+_SYNC_FUNCTIONS = {"gmail": sync_gmail_signals, "google_calendar": sync_calendar_signals, "google_drive": sync_drive_signals}
+
+
+@router.get("/candidates")
+async def cached_candidates(user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Cache-first candidate list (§58): a plain query against persisted
+    `activity_clusters`, never a live re-harvest. Call this on page load;
+    call `POST /reconstruct/sync` separately/asynchronously to check for
+    anything new, exactly like the "database query immediately, then
+    'Checking for anything new…' in the background" UX the spec calls for."""
+
+    return {"items": await get_cached_candidates(session, user.user_id)}
+
+
+@router.post("/sync")
+async def start_incremental_sync(
+    background_tasks: BackgroundTasks,
+    user: CurrentUser = Depends(require_faculty),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    job_id = await create_job(session, owner_id=user.user_id, kind="reconstruct_sync")
+    background_tasks.add_task(_run_incremental_sync, job_id, user.user_id, settings)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/sync/{job_id}")
+async def get_incremental_sync_job(job_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    job = await get_job(session, job_id, user.user_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return job
+
+
+async def _run_incremental_sync(job_id: UUID, profile_id: UUID, settings: Settings) -> None:
+    database.configure(settings)
+    if database.session_factory is None:
+        return
+    async with database.session_factory() as session:
+        await update_job(session, job_id, status="running", progress=5, progress_label="Checking connected sources…")
+
+        connections = await session.execute(
+            text("select provider::text as provider, encrypted_access_token from public.oauth_connections where profile_id = :profile_id and status = 'connected'"),
+            {"profile_id": profile_id},
+        )
+        connected = {row["provider"]: row["encrypted_access_token"] for row in connections.mappings().all()}
+        if not connected:
+            await update_job(session, job_id, status="completed", progress=100, progress_label="No sources connected", result={"new_items": 0, "sources_checked": []})
+            return
+
+        summaries: list[dict[str, Any]] = []
+        progress = 10
+        for provider, sync_fn in _SYNC_FUNCTIONS.items():
+            encrypted_token = connected.get(provider)
+            if not encrypted_token:
+                continue
+            access_token = decrypt_token(settings, encrypted_token)
+            if not access_token:
+                continue
+            await update_job(session, job_id, progress=progress, progress_label=f"Syncing {provider.replace('_', ' ')}…")
+            try:
+                summary = await sync_fn(session, profile_id=profile_id, access_token=access_token, settings=settings)
+                await session.commit()
+                summaries.append({"provider": summary.provider, "mode": summary.mode, "fetched": summary.fetched, "changed": summary.new_or_changed})
+            except Exception:  # noqa: BLE001 - one provider failing must not abort the whole sync
+                logger.exception("reconstruct_sync: provider=%s failed", provider)
+                await session.rollback()
+            progress += 25
+
+        await update_job(session, job_id, progress=80, progress_label="Correlating new signals…")
+        pending = await unprocessed_signals(session, profile_id=profile_id)
+        llm = LLMProvider(settings)
+        new_clusters = 0
+        for signal in pending:
+            outcome = await classify_and_cluster_signal(session, signal, llm)
+            if outcome.actionable and outcome.is_new_cluster:
+                new_clusters += 1
+        await session.commit()
+
+        await update_job(
+            session, job_id, status="completed", progress=100,
+            progress_label=f"{new_clusters} new candidate(s) found" if new_clusters else "Up to date",
+            result={"sources": summaries, "signals_processed": len(pending), "new_clusters": new_clusters},
+        )
+
+
+async def _cached_cluster_or_404(session: AsyncSession, cluster_id: UUID, profile_id: UUID) -> dict[str, Any]:
+    result = await session.execute(
+        text(
+            "select id, predicted_category::text as predicted_category, normalized_title, organization, start_date, status::text as status "
+            "from public.activity_clusters where id = :id and profile_id = :profile_id"
+        ),
+        {"id": cluster_id, "profile_id": profile_id},
+    )
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    return dict(row)
+
+
+@router.post("/candidates/cached/{cluster_id}/confirm")
+async def confirm_cached_candidate(cluster_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    cluster = await _cached_cluster_or_404(session, cluster_id, user.user_id)
+    if cluster["status"] != "proposed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Candidate is already {cluster['status']}")
+    existing = await session.execute(
+        text("select 1 from public.academic_activities where owner_id = :owner_id and lower(title) = lower(:title)"),
+        {"owner_id": user.user_id, "title": cluster["normalized_title"]},
+    )
+    if existing.scalar_one_or_none() is not None:
+        await session.execute(text("update public.activity_clusters set status = 'ignored', updated_at = now() where id = :id"), {"id": cluster_id})
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already in your record; this candidate has been dismissed as a duplicate")
+
+    academic_year = derive_academic_year(cluster["start_date"]) if cluster["start_date"] else "unspecified"
+    activity_result = await session.execute(
+        text(
+            """
+            insert into public.academic_activities (owner_id, category, title, organization, start_date, academic_year, status, source, confidence, confirmed_at)
+            values (:owner_id, cast(:category as activity_category), :title, :organization, :start_date, :academic_year, 'confirmed', 'reconstruction', 0.9, now())
+            returning id
+            """
+        ),
+        {
+            "owner_id": user.user_id, "category": cluster["predicted_category"] or "other", "title": cluster["normalized_title"],
+            "organization": cluster.get("organization"), "start_date": cluster.get("start_date"), "academic_year": academic_year,
+        },
+    )
+    activity_id = activity_result.scalar_one()
+    await session.execute(
+        text("update public.activity_clusters set status = 'confirmed', activity_id = :activity_id, updated_at = now() where id = :id"),
+        {"activity_id": activity_id, "id": cluster_id},
+    )
+    await session.commit()
+    return {"activity_id": activity_id, "cluster_id": cluster_id}
+
+
+@router.post("/candidates/cached/{cluster_id}/ignore")
+async def ignore_cached_candidate(cluster_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+    cluster = await _cached_cluster_or_404(session, cluster_id, user.user_id)
+    if cluster["status"] != "proposed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Candidate is already {cluster['status']}")
+    await session.execute(text("update public.activity_clusters set status = 'ignored', updated_at = now() where id = :id"), {"id": cluster_id})
     await session.commit()
     return {"ok": True}

@@ -1,12 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Download, FileCheck2, Loader2, Paperclip, Upload } from 'lucide-react';
+import { Archive, Download, FileCheck2, Loader2, Paperclip, Sparkles, Upload } from 'lucide-react';
 import { api, listItems, payloadData, uploadEvidenceFile } from '../lib/api';
 import { useApiQuery, invalidateQueries } from '../lib/queryCache';
 import { EVIDENCE_ACCEPT, EVIDENCE_MIME_TYPES, MAX_EVIDENCE_BYTES } from '../lib/constants';
 import { runtimeConfigMessage } from '../lib/config';
 import { Button, EmptyState, Notice, PageHeader } from '../components/ui';
 import { pageEnter } from '../lib/motion';
+
+const CATEGORY_LABELS = {
+  research: 'Research',
+  teaching: 'Teaching',
+  professional_development: 'Professional Development',
+  academic_service: 'Academic Service',
+  student_mentorship: 'Student / Mentorship',
+  administration: 'Administration',
+  other: 'Other',
+};
 
 export default function EvidencePage() {
   const evidence = useApiQuery(['evidence'], () => api.evidence.list({ limit: 100 }));
@@ -17,6 +27,7 @@ export default function EvidencePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [suggestion, setSuggestion] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const items = listItems(evidence.data);
   const activityItems = listItems(activities.data).filter((item) => item.status !== 'archived');
   const selectedActivity = useMemo(() => activityItems.find((item) => item.id === activityId), [activityId, activityItems]);
@@ -72,6 +83,35 @@ export default function EvidencePage() {
     } catch (attachError) { setError(runtimeConfigMessage(attachError)); } finally { setBusy(false); }
     return undefined;
   };
+  const confirmClassification = async (item, category, type) => {
+    setBusy(true); setError('');
+    try {
+      await api.evidence.confirmClassification(item.id, { document_category: category, document_type: type });
+      invalidateQueries(['evidence']);
+      setNotice('Classification confirmed.');
+    } catch (confirmError) { setError(runtimeConfigMessage(confirmError)); } finally { setBusy(false); }
+  };
+  const bulkDownload = async () => {
+    setBulkBusy(true); setError('');
+    try {
+      const started = payloadData(await api.evidence.bulkDownload({}));
+      const jobId = started.job_id;
+      let job = null;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        job = payloadData(await api.evidence.classificationJob(jobId));
+        if (job?.status === 'completed' || job?.status === 'failed') break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => { setTimeout(resolve, 1200); });
+      }
+      if (job?.status === 'completed' && job.result?.download_url) {
+        window.open(job.result.download_url, '_blank', 'noopener,noreferrer');
+        setNotice(`Archive ready: ${job.result.file_count} file(s).`);
+      } else {
+        setError(job?.error || 'The export did not complete in time. Try again.');
+      }
+    } catch (bulkError) { setError(runtimeConfigMessage(bulkError)); } finally { setBulkBusy(false); }
+  };
 
   return (
     <motion.div {...pageEnter} className="space-y-6 pb-12">
@@ -122,7 +162,13 @@ export default function EvidencePage() {
               {evidence.loading ? 'Loading…' : `${items.length} file${items.length === 1 ? '' : 's'} returned by the API`}
             </p>
           </div>
-          <span className="icon-chip bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)]"><FileCheck2 className="h-5 w-5" /></span>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" size="sm" onClick={bulkDownload} disabled={bulkBusy || items.length === 0}>
+              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+              Download all
+            </Button>
+            <span className="icon-chip bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)]"><FileCheck2 className="h-5 w-5" /></span>
+          </div>
         </div>
         {evidence.error && (
           <p className="p-6 text-sm font-semibold text-[var(--brand-rose-ink)]">
@@ -147,6 +193,23 @@ export default function EvidencePage() {
                     <p className="mt-0.5 text-xs font-medium text-[var(--brand-muted)]">
                       {item.mime_type} · {Math.ceil(Number(item.size_bytes || 0) / 1024)} KB · {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'date unavailable'}
                     </p>
+                    {item.document_type && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="chip chip-lavender !border-0 !text-[11px]">
+                          {CATEGORY_LABELS[item.document_category] || item.document_category} · {item.document_type}
+                        </span>
+                        {item.needs_confirmation && (
+                          <button
+                            type="button"
+                            onClick={() => confirmClassification(item, item.document_category, item.document_type)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-[var(--brand-primary-hover)] underline decoration-dotted"
+                          >
+                            <Sparkles className="h-3 w-3" /> Looks right, confirm
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">

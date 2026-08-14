@@ -11,8 +11,7 @@ of an already-filtered item; it never decides inclusion.
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Any
 
 from ..connectors.google import HarvestedItem

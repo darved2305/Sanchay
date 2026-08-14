@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Heart, MessageCircle, Plus, Search, Send, Sparkles, UserCheck, UserPlus, Users, X } from 'lucide-react';
+import { Check, Heart, MessageCircle, PartyPopper, Plus, Search, Send, Sparkles, UserCheck, UserPlus, Users, X } from 'lucide-react';
 import { api, listItems } from '../lib/api';
 import { runtimeConfigMessage } from '../lib/config';
 import { Avatar, Button, EmptyState, Notice, PageHeader } from '../components/ui';
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'connections', label: 'Connections' },
   { id: 'communities', label: 'Communities' },
   { id: 'feed', label: 'Feed' },
+  { id: 'workspaces', label: 'Collaboration Workspaces' },
   { id: 'messages', label: 'Messages' },
 ];
 
@@ -21,6 +22,8 @@ const OPEN_TO_FILTERS = [
   { id: 'mentorship', label: 'Mentors' },
   { id: 'phd', label: 'PhD Supervisors' },
   { id: 'collaboration', label: 'Collaborators' },
+  { id: 'grant_collaboration', label: 'Grant Collaborators' },
+  { id: 'reviewing', label: 'Reviewers/Experts' },
 ];
 
 function ConnectionStateButton({ person, onSend }) {
@@ -30,6 +33,19 @@ function ConnectionStateButton({ person, onSend }) {
   if (person.connection_state === 'pending_sent') return <span className="chip chip-butter !border-0">Pending</span>;
   if (person.connection_state === 'pending_received') return <span className="chip chip-sky !border-0">Wants to connect</span>;
   return <Button variant="primary" size="sm" onClick={send} disabled={busy}><UserPlus className="h-3.5 w-3.5" /> Connect</Button>;
+}
+
+function FollowButton({ profileId }) {
+  const [following, setFollowing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (following) await api.community.unfollow(profileId); else await api.community.follow(profileId);
+      setFollowing((v) => !v);
+    } catch { /* leave state unchanged on failure */ } finally { setBusy(false); }
+  };
+  return <Button variant="ghost" size="sm" onClick={toggle} disabled={busy}>{following ? 'Following' : 'Follow'}</Button>;
 }
 
 function PersonCard({ person, onSend }) {
@@ -47,8 +63,9 @@ function PersonCard({ person, onSend }) {
         {person.reasons?.length > 0 && (
           <p className="mt-1.5 text-xs font-semibold text-[var(--brand-primary-hover)]">{person.reasons.join(' · ')}</p>
         )}
-        <div className="mt-2">
+        <div className="mt-2 flex items-center gap-2">
           <ConnectionStateButton person={person} onSend={onSend} />
+          <FollowButton profileId={person.id} />
         </div>
       </div>
     </div>
@@ -218,30 +235,53 @@ function CommunitiesTab() {
   );
 }
 
+const POST_KINDS = [
+  { id: 'post', label: 'Update' }, { id: 'question', label: 'Research Question' },
+  { id: 'opportunity', label: 'Opportunity' }, { id: 'collaboration', label: 'Looking for Collaborators' },
+  { id: 'announcement', label: 'Announcement' },
+];
+const REACTION_TYPES = [
+  { id: 'like', icon: Heart, label: 'Like' }, { id: 'insightful', icon: Sparkles, label: 'Insightful' }, { id: 'celebrate', icon: PartyPopper, label: 'Celebrate' },
+];
+
 function FeedTab() {
   const feed = useApiQuery(['community', 'feed'], () => api.community.feed());
   const communities = useApiQuery(['community', 'communities'], () => api.community.communities());
   const [body, setBody] = useState('');
+  const [kind, setKind] = useState('post');
   const [communityId, setCommunityId] = useState('');
+  const [researchArea, setResearchArea] = useState('');
+  const [lookingFor, setLookingFor] = useState('');
+  const [skillsNeeded, setSkillsNeeded] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [expandedInterests, setExpandedInterests] = useState(null);
+  const interested = useApiQuery(['community', 'interested', expandedInterests], () => api.community.interested(expandedInterests), { enabled: !!expandedInterests });
 
   const post = async () => {
     if (!body.trim()) return;
     setBusy(true); setError('');
     try {
-      await api.community.createPost(body.trim(), 'post', communityId || null);
-      setBody('');
+      const collaborationPayload = kind === 'collaboration'
+        ? { research_area: researchArea || null, looking_for: lookingFor || null, skills_needed: skillsNeeded ? skillsNeeded.split(',').map((s) => s.trim()).filter(Boolean) : [] }
+        : null;
+      await api.community.createPost(body.trim(), kind, communityId || null, collaborationPayload);
+      setBody(''); setResearchArea(''); setLookingFor(''); setSkillsNeeded(''); setKind('post');
       invalidateQueries(['community', 'feed']);
     } catch (err) { setError(runtimeConfigMessage(err)); } finally { setBusy(false); }
   };
 
-  const react = async (item) => {
+  const react = async (item, reactionType) => {
     try {
-      if (item.reacted) await api.community.unreact(item.id);
-      else await api.community.react(item.id);
+      if (item.my_reaction === reactionType) await api.community.unreact(item.id);
+      else await api.community.react(item.id, reactionType);
       invalidateQueries(['community', 'feed']);
     } catch { /* refresh retries */ }
+  };
+
+  const expressInterest = async (item) => {
+    try { await api.community.expressInterest(item.id); invalidateQueries(['community', 'feed']); }
+    catch { /* refresh retries */ }
   };
 
   const items = listItems(feed.data);
@@ -251,7 +291,19 @@ function FeedTab() {
     <div className="space-y-4">
       {error && <Notice tone="error">{error}</Notice>}
       <div className="app-surface space-y-2.5 p-4">
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder="Share an update, question or opportunity…" className="input resize-none" />
+        <div className="flex flex-wrap gap-1.5">
+          {POST_KINDS.map((k) => (
+            <button key={k.id} type="button" onClick={() => setKind(k.id)} className={`chip !cursor-pointer !border-0 !text-xs ${kind === k.id ? 'chip-lavender' : 'bg-[var(--brand-surface-muted)]'}`}>{k.label}</button>
+          ))}
+        </div>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder={kind === 'collaboration' ? 'Describe the project you need collaborators for…' : 'Share an update, question or opportunity…'} className="input resize-none" />
+        {kind === 'collaboration' && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input value={researchArea} onChange={(e) => setResearchArea(e.target.value)} placeholder="Research area" className="input !py-1.5 !text-xs" />
+            <input value={lookingFor} onChange={(e) => setLookingFor(e.target.value)} placeholder="Looking for (e.g. Medical imaging researcher)" className="input !py-1.5 !text-xs" />
+            <input value={skillsNeeded} onChange={(e) => setSkillsNeeded(e.target.value)} placeholder="Skills needed (comma-separated)" className="input !py-1.5 !text-xs" />
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2">
           <select value={communityId} onChange={(e) => setCommunityId(e.target.value)} className="input !w-auto !py-1.5 !text-xs">
             <option value="">Post to your network</option>
@@ -267,18 +319,96 @@ function FeedTab() {
             <Avatar name={item.author_name} src={item.author_photo_url} size="h-9 w-9" />
             <div>
               <p className="text-sm font-bold text-[var(--brand-ink)]">{item.author_name}</p>
-              <p className="text-xs font-medium text-[var(--brand-subtle)]">{item.community_name || 'Your network'} · {item.kind}</p>
+              <p className="text-xs font-medium text-[var(--brand-subtle)]">{item.community_name || 'Your network'} · {POST_KINDS.find((k) => k.id === item.kind)?.label || item.kind}</p>
             </div>
           </div>
           <p className="mt-2.5 text-sm text-[var(--brand-text)]">{item.body}</p>
-          <div className="mt-2.5 flex items-center gap-4">
-            <button type="button" onClick={() => react(item)} className={`inline-flex items-center gap-1 text-xs font-bold ${item.reacted ? 'text-[var(--brand-rose-ink)]' : 'text-[var(--brand-muted)]'}`}>
-              <Heart className={`h-3.5 w-3.5 ${item.reacted ? 'fill-current' : ''}`} /> {item.reaction_count}
-            </button>
+          {item.kind === 'collaboration' && item.collaboration_payload && (
+            <div className="mt-2.5 rounded-[var(--radius-control)] bg-[var(--brand-lavender)] p-3">
+              {item.collaboration_payload.research_area && <p className="text-xs font-bold text-[var(--brand-lavender-ink)]">Research area: {item.collaboration_payload.research_area}</p>}
+              {item.collaboration_payload.looking_for && <p className="text-xs font-semibold text-[var(--brand-lavender-ink)]">Looking for: {item.collaboration_payload.looking_for}</p>}
+              {item.collaboration_payload.skills_needed?.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">{item.collaboration_payload.skills_needed.map((s) => <span key={s} className="chip chip-surface !border-0 !text-[10px]">{s}</span>)}</div>
+              )}
+            </div>
+          )}
+          <div className="mt-2.5 flex flex-wrap items-center gap-4">
+            {REACTION_TYPES.map((r) => {
+              const Icon = r.icon;
+              const active = item.my_reaction === r.id;
+              return (
+                <button key={r.id} type="button" onClick={() => react(item, r.id)} title={r.label} className={`inline-flex items-center gap-1 text-xs font-bold ${active ? 'text-[var(--brand-rose-ink)]' : 'text-[var(--brand-muted)]'}`}>
+                  <Icon className={`h-3.5 w-3.5 ${active ? 'fill-current' : ''}`} />
+                </button>
+              );
+            })}
+            <span className="text-xs font-bold text-[var(--brand-muted)]">{item.reaction_count}</span>
             <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--brand-muted)]"><MessageCircle className="h-3.5 w-3.5" /> {item.comment_count}</span>
+            {item.kind === 'collaboration' && (
+              <>
+                <button type="button" onClick={() => expressInterest(item)} disabled={item.interested} className={`ml-auto text-xs font-bold ${item.interested ? 'text-[var(--brand-mint-ink)]' : 'text-[var(--brand-primary-hover)]'}`}>
+                  {item.interested ? '✓ Interested' : 'Express Interest'}
+                </button>
+                <button type="button" onClick={() => setExpandedInterests(expandedInterests === item.id ? null : item.id)} className="text-xs font-bold text-[var(--brand-muted)] hover:underline">
+                  {item.interest_count} interested
+                </button>
+              </>
+            )}
           </div>
+          {expandedInterests === item.id && (
+            <div className="mt-2 space-y-1 border-t border-[var(--brand-border-soft)] pt-2">
+              {listItems(interested.data).map((p) => <p key={p.id} className="text-xs font-semibold text-[var(--brand-ink)]">{p.full_name} — {p.institution_name}</p>)}
+              {listItems(interested.data).length === 0 && !interested.loading && <p className="text-xs text-[var(--brand-muted)]">No one has expressed interest yet.</p>}
+            </div>
+          )}
         </motion.div>
       ))}
+    </div>
+  );
+}
+
+const COLLAB_STAGE_LABELS = {
+  introduced: 'Introduced', discussing: 'Discussing', planning: 'Planning',
+  active: 'Active', submitted: 'Submitted', completed: 'Completed', paused: 'Paused',
+};
+
+function WorkspacesTab() {
+  const workspaces = useApiQuery(['community', 'workspaces'], () => api.community.collaborationWorkspaces());
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const create = async () => {
+    if (!title.trim()) return;
+    setBusy(true); setError('');
+    try {
+      await api.community.createCollaborationWorkspace({ title: title.trim() });
+      setTitle('');
+      invalidateQueries(['community', 'workspaces']);
+    } catch (err) { setError(runtimeConfigMessage(err)); } finally { setBusy(false); }
+  };
+
+  const items = listItems(workspaces.data);
+  return (
+    <div className="space-y-4">
+      {error && <Notice tone="error">{error}</Notice>}
+      <div className="app-surface flex flex-wrap items-center gap-2 p-4">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Start a collaboration workspace (e.g. Federated Learning in Radiology)" className="input flex-1 min-w-[220px]" />
+        <Button variant="primary" onClick={create} disabled={busy || !title.trim()}><Plus className="h-4 w-4" /> Create</Button>
+      </div>
+      {!workspaces.loading && items.length === 0 && <EmptyState icon={Users} title="No collaboration workspaces yet" detail="Start one, or accept an interest from a collaboration post in Feed." />}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {items.map((w) => (
+          <div key={w.id} className="app-surface p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-bold text-[var(--brand-ink)]">{w.title}</p>
+              <span className="chip chip-sky !border-0 !text-[10px]">{COLLAB_STAGE_LABELS[w.stage] || w.stage}</span>
+            </div>
+            {w.research_area && <p className="mt-1 text-xs font-medium text-[var(--brand-muted)]">{w.research_area}</p>}
+            <p className="mt-1 text-xs font-semibold text-[var(--brand-subtle)]">{w.member_count} member(s)</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -305,6 +435,7 @@ export default function CommunityPage() {
       {tab === 'connections' && <ConnectionsTab />}
       {tab === 'communities' && <CommunitiesTab />}
       {tab === 'feed' && <FeedTab />}
+      {tab === 'workspaces' && <WorkspacesTab />}
       {tab === 'messages' && <MessagesPanel />}
     </motion.div>
   );

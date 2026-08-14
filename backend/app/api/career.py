@@ -21,8 +21,16 @@ from ..core.config import Settings, get_settings
 from ..core.db import get_db
 from ..core.storage import StorageClient, StorageError
 from ..services.career import evaluate_career_rules, match_opportunities
+from ..services.career_nl import (
+    compute_custom_goal_progress,
+    match_grants_to_goal,
+    match_inbox_items_to_goal,
+    parse_goal_text,
+    suggest_goals,
+)
+from ..services.llm import LLMProvider
 from ..services.sql import mapping_or_404
-from .schemas import CareerGoalSetRequest, CareerRuleCreate
+from .schemas import CareerGoalCustomCreate, CareerGoalParseRequest, CareerGoalSetRequest, CareerGoalStatusUpdate, CareerRuleCreate
 from .utils import institution_id_or_403, rows_to_dicts
 
 router = APIRouter(prefix="/career", tags=["career"])
@@ -185,6 +193,158 @@ async def dismiss_recommendation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recommendation not found")
     await session.commit()
     return {"ok": True}
+
+
+async def _activity_counts(session: AsyncSession, owner_id: UUID) -> dict[str, int]:
+    result = await session.execute(
+        text("select category::text as category, count(*)::int as n from public.academic_activities where owner_id = :owner_id and status = 'confirmed' group by category"),
+        {"owner_id": owner_id},
+    )
+    return {row["category"]: row["n"] for row in result.mappings().all()}
+
+
+async def _connection_count(session: AsyncSession, owner_id: UUID) -> int:
+    result = await session.execute(
+        text("select count(*) from public.connections where profile_id_a = :id or profile_id_b = :id"), {"id": owner_id}
+    )
+    return int(result.scalar_one())
+
+
+async def _custom_goals(session: AsyncSession, profile_id: UUID, status_filter: str = "active") -> list[dict[str, Any]]:
+    result = await session.execute(
+        text(
+            "select id, title, description, target_date, measurable_outcomes, raw_text, source, status::text as status, created_at "
+            "from public.custom_career_goals where profile_id = :profile_id and status = :status order by created_at desc"
+        ),
+        {"profile_id": profile_id, "status": status_filter},
+    )
+    return rows_to_dicts(result.mappings().all())
+
+
+@router.post("/goals/parse")
+async def parse_custom_goal(
+    payload: CareerGoalParseRequest, user: CurrentUser = Depends(require_faculty),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Parses free text into a structured goal preview (§27) -- never saved
+    here; the faculty reviews and calls POST /career/goals/custom to confirm."""
+
+    llm = LLMProvider(settings)
+    parsed = await parse_goal_text(payload.text, datetime.now(UTC).date(), llm)
+    return {
+        "title": parsed.title, "description": parsed.description,
+        "target_date": parsed.target_date, "measurable_outcomes": parsed.measurable_outcomes,
+    }
+
+
+@router.post("/goals/custom")
+async def create_custom_goal(
+    payload: CareerGoalCustomCreate, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    result = await session.execute(
+        text(
+            """
+            insert into public.custom_career_goals (profile_id, title, description, target_date, measurable_outcomes, raw_text, source)
+            values (:profile_id, :title, :description, :target_date, cast(:outcomes as jsonb), :raw_text, :source)
+            returning id
+            """
+        ),
+        {
+            "profile_id": user.user_id, "title": payload.title, "description": payload.description,
+            "target_date": payload.target_date, "outcomes": json.dumps(payload.measurable_outcomes),
+            "raw_text": payload.raw_text, "source": payload.source,
+        },
+    )
+    goal_id = result.scalar_one()
+    await session.commit()
+    return {"id": goal_id}
+
+
+@router.get("/goals/suggested")
+async def get_suggested_goals(user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Deterministic gap-based suggestions (§28) -- computed fresh each call,
+    never persisted until the faculty explicitly accepts one."""
+
+    counts = await _activity_counts(session, user.user_id)
+    connections = await _connection_count(session, user.user_id)
+    profile_result = await session.execute(text("select research_interests from public.profiles where id = :id"), {"id": user.user_id})
+    interests = (profile_result.scalar_one_or_none() or [])
+    active_rule_goal = await _active_goal(session, user.user_id)
+    existing_custom = await _custom_goals(session, user.user_id)
+    has_grant_goal = (active_rule_goal is not None and active_rule_goal.get("goal_key") == "first_grant") or any(g["title"].lower().startswith("secure your first research grant") for g in existing_custom)
+
+    suggestions = suggest_goals(
+        activity_counts=counts, connection_count=connections,
+        top_research_interest=interests[0] if interests else None, has_active_grant_goal=has_grant_goal,
+    )
+    return {"items": [{"key": s.key, "title": s.title, "description": s.description, "reasons": s.reasons, "measurable_outcomes": s.measurable_outcomes} for s in suggestions]}
+
+
+@router.get("/goals/all")
+async def list_all_goals(user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Union of the institution-authored rule goal (unchanged, USP 8) and
+    every active custom/suggested goal (§26-27), each with concrete
+    milestone progress -- never a fabricated percentage (§32/§67)."""
+
+    counts = await _activity_counts(session, user.user_id)
+    rule_goal = await _active_goal(session, user.user_id)
+    rule_progress = evaluate_career_rules(rule_goal["rules"], await _confirmed_activities(session, user.user_id)) if rule_goal else None
+    custom_goals = await _custom_goals(session, user.user_id)
+    for goal in custom_goals:
+        goal["progress"] = compute_custom_goal_progress(goal["measurable_outcomes"], counts)
+    return {
+        "rule_goal": {"goal": rule_goal, "progress": rule_progress} if rule_goal else None,
+        "custom_goals": custom_goals,
+    }
+
+
+@router.patch("/goals/custom/{goal_id}")
+async def update_custom_goal_status(
+    goal_id: UUID, payload: CareerGoalStatusUpdate, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    result = await session.execute(
+        text("update public.custom_career_goals set status = cast(:status as custom_goal_status), updated_at = now() where id = :id and profile_id = :profile_id returning id"),
+        {"status": payload.status, "id": goal_id, "profile_id": user.user_id},
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Career goal not found")
+    await session.commit()
+    return {"id": goal_id, "status": payload.status}
+
+
+@router.get("/goals/custom/{goal_id}/opportunities")
+async def goal_opportunities(goal_id: UUID, user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Surfaces Action Inbox mail and GrantOps opportunities that support
+    this specific goal (§31/§34), each with a stated reason -- the same
+    "one signal, multiple intelligent actions" integration the product spec
+    requires, computed at read time from data every other feature already owns."""
+
+    goal_result = await session.execute(
+        text("select title, description from public.custom_career_goals where id = :id and profile_id = :profile_id"),
+        {"id": goal_id, "profile_id": user.user_id},
+    )
+    goal = goal_result.mappings().first()
+    if goal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Career goal not found")
+    goal_text = f"{goal['title']} {goal['description'] or ''}"
+
+    inbox_result = await session.execute(
+        text(
+            "select id, subject, summary, research_topics from public.action_inbox_items "
+            "where profile_id = :profile_id and status = 'new' order by created_at desc limit 100"
+        ),
+        {"profile_id": user.user_id},
+    )
+    grants_result = await session.execute(
+        text(
+            "select id, title, description, disciplines from public.grant_opportunities "
+            "where institution_id is null or institution_id = (select institution_id from public.profiles where id = :profile_id) limit 100"
+        ),
+        {"profile_id": user.user_id},
+    )
+    inbox_matches = match_inbox_items_to_goal(goal_text, rows_to_dicts(inbox_result.mappings().all()))
+    grant_matches = match_grants_to_goal(goal_text, rows_to_dicts(grants_result.mappings().all()))
+    return {"inbox_items": inbox_matches, "grants": grant_matches}
 
 
 def _dossier_pdf_bytes(profile_name: str, goal_label: str, progress: dict[str, Any], activities: list[dict[str, Any]]) -> bytes:

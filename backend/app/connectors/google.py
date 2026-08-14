@@ -37,8 +37,16 @@ SCOPES = {
     "gmail": "https://www.googleapis.com/auth/gmail.readonly",
     "google_calendar": "https://www.googleapis.com/auth/calendar.readonly",
     "google_drive": "https://www.googleapis.com/auth/drive.readonly",
+    # Incremental scope (product expansion §6): requested separately from
+    # gmail.readonly, only when the Faculty Action Inbox actually needs to
+    # create a Gmail draft -- never bundled into the read-only connection.
+    "gmail_compose": "https://www.googleapis.com/auth/gmail.compose",
 }
-CONNECTOR_PROVIDERS = tuple(SCOPES.keys())
+# The three read-only harvest sources shown on Reconstruct My Year's source
+# list; gmail_compose is a write-scope connection Action Inbox requests
+# separately and is never itself a "source" to harvest from (see
+# ``_FETCHERS`` in reconstruct.py, which has no entry for it and skips it).
+CONNECTOR_PROVIDERS = ("gmail", "google_calendar", "google_drive")
 
 STATE_TTL_SECONDS = 600  # the OAuth consent redirect round-trip must complete within 10 minutes
 
@@ -281,6 +289,235 @@ async def fetch_drive_items(access_token: str, settings: Settings) -> list[Harve
                 raw=file_item,
             ))
         return items
+
+
+async def fetch_gmail_profile_history_id(access_token: str, settings: Settings) -> str | None:
+    """The current mailbox ``historyId`` -- the cursor that makes future syncs
+    incremental (product expansion §50). Fetched once after a full backfill
+    and stored in ``source_sync_state``; every later sync asks Gmail only for
+    changes since this id instead of listing the whole mailbox again."""
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        response = await client.get("https://gmail.googleapis.com/gmail/v1/users/me/profile", headers=headers)
+        if response.status_code != 200:
+            return None
+        return response.json().get("historyId")
+
+
+async def fetch_gmail_message_full(access_token: str, message_id: str, settings: Settings) -> tuple[str, dict[str, Any]] | None:
+    """Return (body_text, raw_message) for one message -- the full body, not
+    just the metadata snippet ``fetch_gmail_items`` reads. Action Inbox
+    extraction needs the actual requested action/deadline text, which rarely
+    survives in a 100-character snippet."""
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        response = await client.get(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+            headers=headers,
+            params={"format": "full"},
+        )
+        if response.status_code != 200:
+            return None
+        body = response.json()
+    return _extract_plain_text(body), body
+
+
+def _extract_plain_text(message: dict[str, Any]) -> str:
+    """Walk a Gmail message payload's MIME tree for the first text/plain part."""
+
+    def walk(part: dict[str, Any]) -> str | None:
+        mime_type = part.get("mimeType", "")
+        data = part.get("body", {}).get("data")
+        if mime_type == "text/plain" and data:
+            return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", errors="ignore")
+        for child in part.get("parts", []) or []:
+            found = walk(child)
+            if found:
+                return found
+        return None
+
+    payload = message.get("payload", {})
+    text = walk(payload)
+    return (text or message.get("snippet", ""))[:20000]
+
+
+async def fetch_gmail_history(
+    access_token: str, settings: Settings, start_history_id: str
+) -> tuple[list[HarvestedItem], str | None, bool]:
+    """Incremental delta sync (product expansion §50): only messages added
+    since ``start_history_id``. Returns (new_items, new_history_id, resync_required).
+    ``resync_required=True`` means Gmail expired the cursor (very old / mailbox
+    reset) and the caller must fall back to a full backfill -- this is Gmail's
+    own contract for ``history.list``, not a bug in this client.
+    """
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    message_ids: set[str] = set()
+    new_history_id = start_history_id
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"startHistoryId": start_history_id, "historyTypes": "messageAdded"}
+            if page_token:
+                params["pageToken"] = page_token
+            response = await client.get("https://gmail.googleapis.com/gmail/v1/users/me/history", headers=headers, params=params)
+            if response.status_code == 404:
+                # startHistoryId too old / mailbox reset -- Gmail's documented signal to re-backfill.
+                return [], None, True
+            if response.status_code != 200:
+                return [], start_history_id, False
+            body = response.json()
+            new_history_id = body.get("historyId", new_history_id)
+            for entry in body.get("history", []):
+                for added in entry.get("messagesAdded", []):
+                    message_id = added.get("message", {}).get("id")
+                    if message_id:
+                        message_ids.add(message_id)
+            page_token = body.get("nextPageToken")
+            if not page_token:
+                break
+
+        items: list[HarvestedItem] = []
+        for message_id in message_ids:
+            detail = await client.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+                headers=headers,
+                params={"format": "metadata", "metadataHeaders": ["Subject", "Date", "From"]},
+            )
+            if detail.status_code != 200:
+                continue
+            body = detail.json()
+            headers_map = {h["name"]: h["value"] for h in body.get("payload", {}).get("headers", [])}
+            if _is_google_system_notification(headers_map.get("From", "")):
+                continue
+            items.append(HarvestedItem(
+                source_type="gmail",
+                external_id=message_id,
+                title=headers_map.get("Subject", ""),
+                snippet=body.get("snippet", ""),
+                occurred_on=_parse_email_date(headers_map.get("Date")),
+                raw=body,
+            ))
+    return items, new_history_id, False
+
+
+async def fetch_calendar_delta(
+    access_token: str, settings: Settings, *, sync_token: str | None = None
+) -> tuple[list[HarvestedItem], str | None, bool]:
+    """Incremental Calendar sync (product expansion §51). With no
+    ``sync_token`` this performs the initial bounded backfill and returns a
+    fresh token to persist; with one, it asks Google for only what changed.
+    Returns (items, new_sync_token, resync_required) -- ``resync_required``
+    mirrors Gmail's contract: Google's own signal that the token expired and
+    a full backfill is needed, not a bug in this client."""
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    items: list[HarvestedItem] = []
+    new_sync_token: str | None = None
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"singleEvents": True}
+            if sync_token:
+                params["syncToken"] = sync_token
+            else:
+                params["maxResults"] = 100
+            if page_token:
+                params["pageToken"] = page_token
+            response = await client.get("https://www.googleapis.com/calendar/v3/calendars/primary/events", headers=headers, params=params)
+            if response.status_code == 410:
+                # Expired/invalid syncToken -- Google's documented signal to re-backfill from scratch.
+                return [], None, True
+            response.raise_for_status()
+            body = response.json()
+            for event in body.get("items", []):
+                if event.get("status") == "cancelled":
+                    continue  # Deletions surface as cancelled events in delta responses; nothing to harvest.
+                start = event.get("start", {}).get("date") or event.get("start", {}).get("dateTime", "")
+                items.append(HarvestedItem(
+                    source_type="google_calendar", external_id=event.get("id", ""), title=event.get("summary", ""),
+                    snippet=event.get("description", "") or "", occurred_on=start[:10] if start else None, raw=event,
+                ))
+            new_sync_token = body.get("nextSyncToken", new_sync_token)
+            page_token = body.get("nextPageToken")
+            if not page_token or (not sync_token and len(items) >= 100):
+                break
+    return items, new_sync_token, False
+
+
+async def fetch_drive_start_page_token(access_token: str, settings: Settings) -> str | None:
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        response = await client.get("https://www.googleapis.com/drive/v3/changes/startPageToken", headers=headers)
+        if response.status_code != 200:
+            return None
+        return response.json().get("startPageToken")
+
+
+async def fetch_drive_changes(access_token: str, settings: Settings, page_token: str) -> tuple[list[HarvestedItem], str | None]:
+    """Incremental Drive sync (product expansion §52) via ``changes.list``.
+    Returns (items, new_start_page_token) -- deleted/trashed files are
+    skipped, never treated as harvestable signals."""
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    items: list[HarvestedItem] = []
+    new_start_page_token: str | None = None
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        token = page_token
+        while token:
+            response = await client.get(
+                "https://www.googleapis.com/drive/v3/changes",
+                headers=headers,
+                params={"pageToken": token, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,createdTime,description,trashed))"},
+            )
+            if response.status_code != 200:
+                break
+            body = response.json()
+            for change in body.get("changes", []):
+                file_item = change.get("file") or {}
+                if change.get("removed") or file_item.get("trashed"):
+                    continue
+                if not file_item.get("id"):
+                    continue
+                items.append(HarvestedItem(
+                    source_type="google_drive", external_id=file_item["id"], title=file_item.get("name", ""),
+                    snippet=file_item.get("description", "") or "",
+                    occurred_on=(file_item.get("createdTime") or "")[:10] or None, raw=file_item,
+                ))
+            new_start_page_token = body.get("newStartPageToken", new_start_page_token)
+            token = body.get("nextPageToken")
+    return items, new_start_page_token
+
+
+async def create_gmail_draft(access_token: str, settings: Settings, *, to: str, subject: str, body_text: str, thread_id: str | None = None) -> dict[str, Any]:
+    """Create a Gmail draft via the gmail.compose scope. Never sends -- draft
+    creation only (product expansion §6: "Actual Send remains an explicit
+    Gmail/user action"). Raises on failure; the caller is expected to fall
+    back to the copy-to-clipboard path rather than surface a raw error."""
+
+    import email.message
+
+    message = email.message.EmailMessage()
+    message["To"] = to
+    message["Subject"] = subject
+    message.set_content(body_text)
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
+    payload: dict[str, Any] = {"message": {"raw": raw}}
+    if thread_id:
+        payload["message"]["threadId"] = thread_id
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=settings.external_api_timeout_seconds) as client:
+        response = await client.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 def fixture_harvest() -> list[HarvestedItem]:

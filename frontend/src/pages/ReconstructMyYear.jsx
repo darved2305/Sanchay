@@ -28,11 +28,26 @@ async function pollRun(runId, onUpdate, { intervalMs = 1200, maxAttempts = 60 } 
   throw new Error('Reconstruction is taking longer than expected. Check back shortly.');
 }
 
+async function pollSyncJob(jobId, { intervalMs = 1200, maxAttempts = 60 } = {}) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const job = payloadData(await api.reconstruct.syncJob(jobId));
+    if (job.status === 'completed' || job.status === 'failed') return job;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error('Sync is taking longer than expected. Check back shortly.');
+}
+
 export default function ReconstructMyYear({ setCurrentView }) {
   const sources = useApiQuery(['reconstruct', 'sources'], () => api.reconstruct.sources());
+  // Cache-first (product expansion §58): read whatever's already persisted
+  // immediately on mount -- no scan, no wait. `handleSync` below only ever
+  // checks for *changes* since the last connect, never re-harvests everything.
+  const cached = useApiQuery(['reconstruct', 'cached'], () => api.reconstruct.cachedCandidates());
   const [run, setRun] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [scanning, setScanning] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [oauthBusy, setOauthBusy] = useState('');
@@ -40,6 +55,7 @@ export default function ReconstructMyYear({ setCurrentView }) {
 
   const sourceItems = payloadData(sources.data)?.sources || [];
   const fixtureMode = payloadData(sources.data)?.fixture_mode;
+  const cachedItems = listItems(cached.data);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -110,6 +126,40 @@ export default function ReconstructMyYear({ setCurrentView }) {
     }
   };
 
+  const respondCached = async (clusterId, action) => {
+    setBusyId(clusterId);
+    try {
+      if (action === 'confirm') await api.reconstruct.confirmCached(clusterId);
+      else await api.reconstruct.ignoreCached(clusterId);
+      invalidateQueries(['reconstruct', 'cached']);
+      invalidateQueries(['activities']);
+      invalidateQueries(['dashboard', 'faculty']);
+    } catch (err) {
+      setError(runtimeConfigMessage(err));
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true); setError(''); setSyncNotice('');
+    try {
+      const started = payloadData(await api.reconstruct.sync());
+      const job = await pollSyncJob(started.job_id);
+      if (job.status === 'failed') {
+        setError(job.error || 'Sync could not complete.');
+      } else {
+        const newCount = job.result?.new_clusters ?? 0;
+        setSyncNotice(newCount > 0 ? `+${newCount} new activity candidate(s) found` : 'Up to date -- nothing new since last sync.');
+        invalidateQueries(['reconstruct', 'cached']);
+      }
+    } catch (err) {
+      setError(runtimeConfigMessage(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <motion.div {...pageEnter} className="space-y-6 pb-12">
       <PageHeader
@@ -121,10 +171,16 @@ export default function ReconstructMyYear({ setCurrentView }) {
           </button>
         }
         actions={
-          <Button variant="primary" onClick={handleScan} disabled={scanning}>
-            <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
-            {scanning ? 'Scanning…' : 'Reconstruct My Year'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={handleSync} disabled={syncing}>
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Checking for anything new…' : 'Sync'}
+            </Button>
+            <Button variant="primary" onClick={handleScan} disabled={scanning}>
+              <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
+              {scanning ? 'Scanning…' : 'Full rescan'}
+            </Button>
+          </div>
         }
       />
 
@@ -132,6 +188,7 @@ export default function ReconstructMyYear({ setCurrentView }) {
         <Notice tone="info">Running in fixture mode -- Google sources aren't connected yet, so this run uses representative demo signals to exercise the full pipeline.</Notice>
       )}
       {oauthNotice && <Notice tone="success">{oauthNotice}</Notice>}
+      {syncNotice && <Notice tone="success">{syncNotice}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -176,6 +233,34 @@ export default function ReconstructMyYear({ setCurrentView }) {
         </motion.div>
       )}
 
+      {/* Cache-first (product expansion §58): already-persisted candidates render
+          immediately from the database, independent of `scanning`/`syncing` state. */}
+      {cachedItems.length > 0 && (
+        <motion.section {...cardEnter} className="app-surface space-y-4 p-6">
+          <div className="border-b border-[var(--brand-border-soft)] pb-4">
+            <h2 className="text-xl font-extrabold text-[var(--brand-ink)]">Recovered activities</h2>
+            <p className="mt-1 text-sm font-medium text-[var(--brand-muted)]">Already found from your connected sources. Review and confirm.</p>
+          </div>
+          <div className="space-y-3">
+            {cachedItems.map((item) => (
+              <ProposalCard
+                key={item.id}
+                title={item.normalized_title}
+                category={item.predicted_category}
+                date={item.start_date}
+                organization={item.organization}
+                confidence={item.confidence}
+                sourceChips={(item.sources || []).map((s) => SOURCE_LABELS[s.source] || s.source)}
+                whySuggested={(item.sources || []).map((s) => s.snippet).filter(Boolean).join(' · ')}
+                onConfirm={() => respondCached(item.id, 'confirm')}
+                onIgnore={() => respondCached(item.id, 'ignore')}
+                busy={busyId === item.id}
+              />
+            ))}
+          </div>
+        </motion.section>
+      )}
+
       {!scanning && candidates.length > 0 && (
         <motion.section {...cardEnter} className="app-surface space-y-4 p-6">
           <div className="border-b border-[var(--brand-border-soft)] pb-4">
@@ -210,11 +295,11 @@ export default function ReconstructMyYear({ setCurrentView }) {
         />
       )}
 
-      {!scanning && !run && (
+      {!scanning && !run && !cached.loading && cachedItems.length === 0 && (
         <EmptyState
           icon={RefreshCw}
           title="Nothing scanned yet"
-          detail="Click Reconstruct My Year to scan your connected sources and correlate them into proposed activities."
+          detail="Click Sync to check connected sources for anything new, or Full rescan to scan everything from scratch."
         />
       )}
     </motion.div>

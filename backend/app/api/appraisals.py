@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import io
-import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -21,7 +20,7 @@ from ..core.config import Settings, get_settings
 from ..core.db import get_db
 from ..core.storage import StorageClient, StorageError
 from ..services.sql import mapping_or_404
-from .schemas import ReviewAction, SubmissionItemUpdate, SubmissionItemsPatch, SubmissionReviewRequest
+from .schemas import SubmissionItemsPatch, SubmissionReviewRequest
 from .utils import institution_id_or_403, rows_to_dicts
 
 router = APIRouter(prefix="/appraisals", tags=["appraisals"])

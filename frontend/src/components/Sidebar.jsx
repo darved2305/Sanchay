@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarPlus, FileCheck, FileUp, FolderArchive, GitCompare, GraduationCap, Layers, LayoutDashboard, RefreshCw, Send, Sparkles, TrendingUp, Users, UserRound, X, Zap } from 'lucide-react';
+import { Award, CalendarPlus, FileCheck, FileUp, FolderArchive, GitCompare, GraduationCap, Inbox, Layers, LayoutDashboard, RefreshCw, Send, Sparkles, TrendingUp, Users, UserRound, X, Zap } from 'lucide-react';
 import { Avatar } from './ui';
 
 function displayName(profile) { return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member'; }
@@ -8,6 +8,8 @@ function displayName(profile) { return profile?.full_name || profile?.name || pr
 const FACULTY_NAV = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
   { id: 'activities', label: 'Activities & Record', icon: Layers },
+  { id: 'action-inbox', label: 'Action Inbox', icon: Inbox },
+  { id: 'grantops', label: 'GrantOps', icon: Award },
   { id: 'reconstruct', label: 'Reconstruct My Year', icon: RefreshCw },
   { id: 'forms', label: 'Any Form Assistant', icon: Sparkles },
   { id: 'rescue', label: 'Deadline Rescue', icon: Zap },
