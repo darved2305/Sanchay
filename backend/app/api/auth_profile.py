@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -143,9 +144,10 @@ async def update_profile(
             bind = f"faculty_value_{index}"
             if key == "qualifications":
                 assignments.append(f"{key} = cast(:{bind} as jsonb)")
+                params[bind] = json.dumps(value)
             else:
                 assignments.append(f"{key} = :{bind}")
-            params[bind] = value
+                params[bind] = value
         result = await session.execute(
             text(
                 f"update public.faculty_profiles set {', '.join(assignments)} "

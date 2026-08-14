@@ -49,10 +49,10 @@ async def _upsert_record(session: AsyncSession, item: PublicationItem) -> UUID:
         text(
             """
             select id from public.publication_records
-            where (:doi is not null and doi = :doi)
-               or (:openalex_id is not null and openalex_id = :openalex_id)
-               or (normalized_title_hash = :title_hash and year is not distinct from :year)
-            order by (doi = :doi) desc nulls last
+            where (cast(:doi as text) is not null and doi = cast(:doi as text))
+               or (cast(:openalex_id as text) is not null and openalex_id = cast(:openalex_id as text))
+               or (normalized_title_hash = cast(:title_hash as text) and year is not distinct from cast(:year as int))
+            order by (doi = cast(:doi as text)) desc nulls last
             limit 1
             """
         ),
@@ -121,9 +121,9 @@ async def _upsert_record(session: AsyncSession, item: PublicationItem) -> UUID:
                 text(
                     """
                     select id from public.publication_records
-                    where (:doi is not null and doi = :doi)
-                       or (:openalex_id is not null and openalex_id = :openalex_id)
-                       or (normalized_title_hash = :title_hash and year is not distinct from :year)
+                    where (cast(:doi as text) is not null and doi = cast(:doi as text))
+                       or (cast(:openalex_id as text) is not null and openalex_id = cast(:openalex_id as text))
+                       or (normalized_title_hash = cast(:title_hash as text) and year is not distinct from cast(:year as int))
                     limit 1
                     """
                 ),
@@ -326,7 +326,7 @@ async def confirm_candidate(
               (owner_id, category, title, description, organization, start_date, academic_year,
                doi, url, metadata, visibility, status, source, confirmed_at)
             values (:owner_id, 'publication', :title, :description, :venue, :start_date, :academic_year,
-                    :doi, case when :doi is not null then 'https://doi.org/' || :doi else null end,
+                    :doi, case when cast(:doi as text) is not null then 'https://doi.org/' || cast(:doi as text) else null end,
                     cast(:metadata as jsonb), 'private', 'confirmed', 'publication_sync', now())
             returning id
             """

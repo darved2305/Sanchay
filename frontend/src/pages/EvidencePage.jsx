@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Archive, Download, FileCheck2, Loader2, Paperclip, Sparkles, Upload } from 'lucide-react';
+import { Archive, ChevronDown, Download, FileCheck2, Loader2, Paperclip, Sparkles, Upload, X } from 'lucide-react';
 import { api, listItems, payloadData, uploadEvidenceFile } from '../lib/api';
 import { useApiQuery, invalidateQueries } from '../lib/queryCache';
 import { EVIDENCE_ACCEPT, EVIDENCE_MIME_TYPES, MAX_EVIDENCE_BYTES } from '../lib/constants';
 import { runtimeConfigMessage } from '../lib/config';
 import { Button, EmptyState, Notice, PageHeader } from '../components/ui';
 import { pageEnter } from '../lib/motion';
+import { useClickOutside } from '../lib/useClickOutside';
 
 const CATEGORY_LABELS = {
   research: 'Research',
@@ -21,38 +22,80 @@ const CATEGORY_LABELS = {
 export default function EvidencePage() {
   const evidence = useApiQuery(['evidence'], () => api.evidence.list({ limit: 100 }));
   const activities = useApiQuery(['activities', { forEvidence: true }], () => api.activities.list({ limit: 100 }));
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [activityId, setActivityId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [suggestion, setSuggestion] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const items = listItems(evidence.data);
   const activityItems = listItems(activities.data).filter((item) => item.status !== 'archived');
   const selectedActivity = useMemo(() => activityItems.find((item) => item.id === activityId), [activityId, activityItems]);
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    for (const item of items) {
+      if (!item.document_category) continue;
+      counts[item.document_category] = (counts[item.document_category] || 0) + 1;
+    }
+    return counts;
+  }, [items]);
+  const closeDownloadMenu = useCallback(() => setShowDownloadMenu(false), []);
+  const downloadMenuRef = useClickOutside(showDownloadMenu, closeDownloadMenu);
 
   const selectFile = (event) => {
-    const next = event.target.files?.[0] || null;
+    const picked = Array.from(event.target.files || []);
     setError('');
-    if (!next) return setFile(null);
-    if (!EVIDENCE_MIME_TYPES.includes(next.type)) return setError('Use PDF, PNG, JPG, JPEG, DOCX or XLSX evidence files.');
-    if (next.size > MAX_EVIDENCE_BYTES) return setError('Evidence files must be 25 MB or smaller.');
-    return setFile(next);
+    if (picked.length === 0) return setFiles([]);
+    const rejected = [];
+    const accepted = [];
+    for (const candidate of picked) {
+      if (!EVIDENCE_MIME_TYPES.includes(candidate.type)) rejected.push(`${candidate.name} (unsupported type)`);
+      else if (candidate.size > MAX_EVIDENCE_BYTES) rejected.push(`${candidate.name} (over 25 MB)`);
+      else accepted.push(candidate);
+    }
+    if (rejected.length > 0) setError(`Skipped: ${rejected.join(', ')}. Use PDF, PNG, JPG, JPEG, DOCX or XLSX, max 25 MB each.`);
+    return setFiles(accepted);
   };
+  const removeSelectedFile = (index) => setFiles((previous) => previous.filter((_, i) => i !== index));
   const upload = async (event) => {
     event.preventDefault();
-    if (!file) return setError('Choose a file before uploading.');
+    if (files.length === 0) return setError('Choose at least one file before uploading.');
     setBusy(true); setError(''); setNotice(''); setSuggestion(null);
-    try {
-      const uploaded = await uploadEvidenceFile(file, activityId ? [activityId] : []);
-      setFile(null); event.target.reset(); setNotice(selectedActivity ? 'Evidence uploaded and attached.' : 'Evidence uploaded. Attach it to an activity when ready.');
-      invalidateQueries(['evidence']); invalidateQueries(['activities']); invalidateQueries(['dashboard', 'faculty']);
-      if (!activityId && uploaded?.id) {
-        const matches = listItems(payloadData(await api.evidence.matches(uploaded.id)));
-        if (matches.length > 0) setSuggestion({ evidenceId: uploaded.id, match: matches[0] });
+    const failures = [];
+    let lastUploaded = null;
+    for (let index = 0; index < files.length; index += 1) {
+      setUploadProgress({ index: index + 1, total: files.length, name: files[index].name });
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        lastUploaded = await uploadEvidenceFile(files[index], activityId ? [activityId] : []);
+      } catch (uploadError) {
+        failures.push(`${files[index].name}: ${runtimeConfigMessage(uploadError)}`);
       }
-    } catch (uploadError) { setError(runtimeConfigMessage(uploadError)); } finally { setBusy(false); }
+    }
+    setUploadProgress(null);
+    const succeeded = files.length - failures.length;
+    if (failures.length === 0) {
+      setNotice(
+        files.length === 1
+          ? (selectedActivity ? 'Evidence uploaded and attached.' : 'Evidence uploaded. Attach it to an activity when ready.')
+          : `${succeeded} file(s) uploaded${selectedActivity ? ' and attached' : ''}.`,
+      );
+    } else if (succeeded > 0) {
+      setNotice(`${succeeded} of ${files.length} file(s) uploaded.`);
+      setError(failures.join(' · '));
+    } else {
+      setError(failures.join(' · '));
+    }
+    setFiles([]); event.target.reset();
+    invalidateQueries(['evidence']); invalidateQueries(['activities']); invalidateQueries(['dashboard', 'faculty']);
+    if (!activityId && files.length === 1 && failures.length === 0 && lastUploaded?.id) {
+      const matches = listItems(payloadData(await api.evidence.matches(lastUploaded.id)));
+      if (matches.length > 0) setSuggestion({ evidenceId: lastUploaded.id, match: matches[0] });
+    }
+    setBusy(false);
     return undefined;
   };
   const acceptSuggestion = async () => {
@@ -91,10 +134,11 @@ export default function EvidencePage() {
       setNotice('Classification confirmed.');
     } catch (confirmError) { setError(runtimeConfigMessage(confirmError)); } finally { setBusy(false); }
   };
-  const bulkDownload = async () => {
+  const bulkDownload = async (filter = {}) => {
+    setShowDownloadMenu(false);
     setBulkBusy(true); setError('');
     try {
-      const started = payloadData(await api.evidence.bulkDownload({}));
+      const started = payloadData(await api.evidence.bulkDownload(filter));
       const jobId = started.job_id;
       let job = null;
       for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -124,8 +168,8 @@ export default function EvidencePage() {
         <form onSubmit={upload} className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_260px_auto] lg:items-end">
           <div>
             <label htmlFor="evidence-file" className="input-label">Choose evidence</label>
-            <input id="evidence-file" type="file" accept={EVIDENCE_ACCEPT} onChange={selectFile} className="input !bg-[var(--brand-surface)]" />
-            <p className="mt-1.5 text-xs font-medium text-[var(--brand-muted)]">PDF, PNG, JPG, DOCX or XLSX · max 25 MB</p>
+            <input id="evidence-file" type="file" accept={EVIDENCE_ACCEPT} multiple onChange={selectFile} className="input !bg-[var(--brand-surface)]" />
+            <p className="mt-1.5 text-xs font-medium text-[var(--brand-muted)]">PDF, PNG, JPG, DOCX or XLSX · max 25 MB each · select multiple to upload together</p>
           </div>
           <div>
             <label htmlFor="evidence-activity" className="input-label">Attach to activity</label>
@@ -134,11 +178,23 @@ export default function EvidencePage() {
               {activityItems.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
             </select>
           </div>
-          <Button variant="primary" type="submit" disabled={busy || !file}>
+          <Button variant="primary" type="submit" disabled={busy || files.length === 0}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Upload file
+            {busy && uploadProgress ? `Uploading ${uploadProgress.index}/${uploadProgress.total}…` : files.length > 1 ? `Upload ${files.length} files` : 'Upload file'}
           </Button>
         </form>
+        {files.length > 0 && !busy && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {files.map((selected, index) => (
+              <span key={`${selected.name}-${index}`} className="chip chip-surface flex items-center gap-1.5 !text-xs">
+                {selected.name}
+                <button type="button" onClick={() => removeSelectedFile(index)} aria-label={`Remove ${selected.name}`} className="text-[var(--brand-subtle)] hover:text-[var(--brand-rose-ink)]">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {error && <Notice tone="error" className="mt-4">{error}</Notice>}
         {notice && <Notice tone="success" className="mt-4">{notice}</Notice>}
         {suggestion && (
@@ -163,10 +219,40 @@ export default function EvidencePage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" size="sm" onClick={bulkDownload} disabled={bulkBusy || items.length === 0}>
-              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
-              Download all
-            </Button>
+            <div className="relative" ref={downloadMenuRef}>
+              <Button
+                variant="secondary" size="sm"
+                onClick={() => setShowDownloadMenu((value) => !value)}
+                disabled={bulkBusy || items.length === 0}
+              >
+                {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                Download <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              {showDownloadMenu && (
+                <div className="app-surface absolute right-0 z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2">
+                  <button
+                    type="button"
+                    onClick={() => bulkDownload({})}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-bold text-[var(--brand-ink)] transition hover:bg-[var(--brand-primary-softer)]"
+                  >
+                    All files <span className="text-xs font-medium text-[var(--brand-muted)]">{items.length}</span>
+                  </button>
+                  {Object.keys(categoryCounts).length > 0 && (
+                    <div className="my-1.5 border-t border-[var(--brand-border-soft)]" />
+                  )}
+                  {Object.entries(categoryCounts).map(([category, count]) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => bulkDownload({ document_category: category })}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-bold text-[var(--brand-ink)] transition hover:bg-[var(--brand-primary-softer)]"
+                    >
+                      {CATEGORY_LABELS[category] || category} <span className="text-xs font-medium text-[var(--brand-muted)]">{count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <span className="icon-chip bg-[var(--brand-primary-soft)] text-[var(--brand-primary-hover)]"><FileCheck2 className="h-5 w-5" /></span>
           </div>
         </div>

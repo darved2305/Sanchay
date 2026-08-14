@@ -78,8 +78,14 @@ def _year_month(value: dict[str, Any] | None) -> tuple[int | None, int | None]:
     if not value:
         return None, None
     try:
-        year = int(value.get("year", {}).get("value")) if value.get("year", {}).get("value") else None
-        month = int(value.get("month", {}).get("value")) if value.get("month", {}).get("value") else None
+        # ORCID returns an explicit `"month": null` (not a missing key) for
+        # works recorded with only a year -- `.get("month", {})` only falls
+        # back to `{}` when the key is *absent*, so an explicit null still
+        # comes back as None and crashes the next `.get("value")` call.
+        year_field = value.get("year") or {}
+        month_field = value.get("month") or {}
+        year = int(year_field.get("value")) if year_field.get("value") else None
+        month = int(month_field.get("value")) if month_field.get("value") else None
         return year, month
     except (TypeError, ValueError):
         return None, None

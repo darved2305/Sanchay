@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Bell, ChevronDown, LogOut, Menu, PanelLeft, PanelLeftClose, Plus, Search, Sparkles } from 'lucide-react';
 import Logo from './Logo';
 import { Avatar } from './ui';
 import { api, listItems } from '../lib/api';
 import { useApiQuery, invalidateQueries } from '../lib/queryCache';
+import { useClickOutside } from '../lib/useClickOutside';
 
 function displayName(profile) { return profile?.full_name || profile?.name || profile?.faculty_profile?.full_name || 'Faculty member'; }
 function profileRole(profile) { return ['admin', 'dept_admin', 'institution_admin', 'reviewer'].includes(profile?.role) ? 'Administrator' : 'Faculty'; }
@@ -20,6 +21,10 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
   const goHome = () => { setCurrentView(currentRole === 'Admin' ? 'admin' : 'dashboard'); setShowProfileMenu(false); };
   const markNotificationsRead = async () => { if (!unreadCount) return; try { await api.markNotificationsRead({ all: true }); invalidateQueries(['notifications']); } catch { /* realtime refresh retries */ } };
   const closeAllMenus = () => { setShowNotifications(false); setShowProfileMenu(false); };
+  const closeNotifications = useCallback(() => setShowNotifications(false), []);
+  const closeProfileMenu = useCallback(() => setShowProfileMenu(false), []);
+  const notificationsRef = useClickOutside(showNotifications, closeNotifications);
+  const profileMenuRef = useClickOutside(showProfileMenu, closeProfileMenu);
 
   return (
     <header className="z-30 shrink-0 border-b border-[var(--brand-border-soft)] bg-[color:rgb(251_250_247_/_92%)] px-4 py-3 backdrop-blur-xl sm:px-6">
@@ -77,7 +82,7 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
             </>
           )}
 
-          <div className="relative">
+          <div className="relative" ref={notificationsRef}>
             <button
               type="button"
               onClick={() => { closeAllMenus(); setShowNotifications((value) => !value); markNotificationsRead(); }}
@@ -95,7 +100,7 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
               <div className="app-surface absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4">
                 <div className="flex items-center justify-between border-b border-[var(--brand-border-soft)] pb-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--brand-ink)]">Notifications</h4>
-                  <button type="button" onClick={markNotificationsRead} className="text-xs font-bold text-[var(--brand-primary)]">Mark read</button>
+                  <button type="button" onClick={() => { markNotificationsRead(); closeNotifications(); }} className="text-xs font-bold text-[var(--brand-primary)]">Mark read</button>
                 </div>
                 <div className="divide-y divide-[var(--brand-border-soft)] text-sm">
                   {notifications.loading && <p className="py-4 text-[var(--brand-muted)]">Loading notifications…</p>}
@@ -114,7 +119,7 @@ export default function Header({ profile, currentRole, setCurrentView, onOpenAdd
             )}
           </div>
 
-          <div className="relative">
+          <div className="relative" ref={profileMenuRef}>
             <button
               type="button"
               onClick={() => { closeAllMenus(); setShowProfileMenu((value) => !value); }}

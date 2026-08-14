@@ -116,6 +116,58 @@ export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView, 
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <section className="rounded-[var(--radius-card)] border border-[var(--brand-lavender-strong)] bg-[var(--brand-primary-softer)] p-6">
+          <span className="chip chip-primary !border-[var(--brand-surface)]"><FlaskConical className="h-3.5 w-3.5" />Real publication sync</span>
+          <h2 className="mt-3 text-xl font-extrabold text-[var(--brand-ink)]">ORCID, OpenAlex &amp; Crossref</h2>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--brand-muted)]">
+            Sync candidates from the configured publication sources. Nothing is added until you confirm it.
+          </p>
+          <Button variant="primary" className="mt-4 w-full" onClick={syncPublications} disabled={actionBusy === 'sync-publications'}>
+            {actionBusy === 'sync-publications' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Sync publication sources
+          </Button>
+          {candidates.error && <p className="mt-3 text-xs font-semibold text-[var(--brand-rose-ink)]">{runtimeConfigMessage(candidates.error)}</p>}
+          {candidateItems.length > 0 && (
+            <div className="mt-4 space-y-3">
+              {candidateItems.map((candidate) => {
+                const publication = candidate.publication || candidate;
+                return (
+                  <div key={candidate.id} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] p-3.5">
+                    <p className="font-bold text-[var(--brand-ink)]">{publication.title || publication.work_title || 'Untitled candidate'}</p>
+                    <p className="mt-1 text-xs font-medium text-[var(--brand-muted)]">
+                      {candidate.source || candidate.provider || 'Publication source'}{publication.doi ? ` · DOI ${publication.doi}` : ''}{publication.year ? ` · ${publication.year}` : ''}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button variant="success" size="sm" className="flex-1" onClick={() => confirmCandidate(candidate)} disabled={actionBusy === `confirm-${candidate.id}`}>
+                        {actionBusy === `confirm-${candidate.id}` ? 'Saving…' : 'Confirm'}
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => rejectCandidate(candidate)} disabled={actionBusy === `reject-${candidate.id}`}>
+                        {actionBusy === `reject-${candidate.id}` ? '…' : 'Reject'}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!candidates.loading && candidateItems.length === 0 && (
+            <p className="mt-4 text-xs font-semibold text-[var(--brand-lavender-ink)]">No publication candidates are waiting for review.</p>
+          )}
+        </section>
+
+        <section className="rounded-[var(--radius-card)] border border-[var(--brand-butter-strong)] bg-[var(--brand-butter)] p-6">
+          <div className="flex items-center gap-2 text-[var(--brand-butter-ink)]">
+            <Upload className="h-5 w-5" />
+            <h3 className="text-xs font-bold uppercase tracking-wider">Evidence management</h3>
+          </div>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--brand-muted)]">Attach proof to one or more activities from the Evidence Library.</p>
+          <button type="button" onClick={() => setCurrentView('evidence')} className="mt-4 flex items-center gap-2 text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
+            Open Evidence Library <ShieldCheck className="h-4 w-4" />
+          </button>
+        </section>
+      </div>
+
       {actionError && (
         <Notice tone="error">
           <span className="flex-1">{actionError}</span>
@@ -229,6 +281,7 @@ export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView, 
           </section>
         </div>
 
+        {(eventProposalItems.length > 0 || (!hasAnyData && !activities.loading)) && (
         <motion.aside {...cardEnter} className="w-full space-y-6 xl:w-[320px] xl:shrink-0">
           {eventProposalItems.length > 0 && (
             <section className="rounded-[var(--radius-card)] border border-[var(--brand-mint-strong)] bg-[var(--brand-mint)] p-6">
@@ -258,62 +311,13 @@ export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView, 
             </section>
           )}
 
-          <section className="rounded-[var(--radius-card)] border border-[var(--brand-lavender-strong)] bg-[var(--brand-primary-softer)] p-6">
-            <span className="chip chip-primary !border-[var(--brand-surface)]"><FlaskConical className="h-3.5 w-3.5" />Real publication sync</span>
-            <h2 className="mt-3 text-xl font-extrabold text-[var(--brand-ink)]">ORCID, OpenAlex &amp; Crossref</h2>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--brand-muted)]">
-              Sync candidates from the configured publication sources. Nothing is added until you confirm it.
-            </p>
-            <Button variant="primary" className="mt-4 w-full" onClick={syncPublications} disabled={actionBusy === 'sync-publications'}>
-              {actionBusy === 'sync-publications' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Sync publication sources
-            </Button>
-            {candidates.error && <p className="mt-3 text-xs font-semibold text-[var(--brand-rose-ink)]">{runtimeConfigMessage(candidates.error)}</p>}
-            {candidateItems.length > 0 && (
-              <div className="mt-4 space-y-3">
-                {candidateItems.map((candidate) => {
-                  const publication = candidate.publication || candidate;
-                  return (
-                    <div key={candidate.id} className="rounded-[var(--radius-control)] border border-[var(--brand-border-soft)] bg-[var(--brand-surface)] p-3.5">
-                      <p className="font-bold text-[var(--brand-ink)]">{publication.title || publication.work_title || 'Untitled candidate'}</p>
-                      <p className="mt-1 text-xs font-medium text-[var(--brand-muted)]">
-                        {candidate.source || candidate.provider || 'Publication source'}{publication.doi ? ` · DOI ${publication.doi}` : ''}{publication.year ? ` · ${publication.year}` : ''}
-                      </p>
-                      <div className="mt-3 flex gap-2">
-                        <Button variant="success" size="sm" className="flex-1" onClick={() => confirmCandidate(candidate)} disabled={actionBusy === `confirm-${candidate.id}`}>
-                          {actionBusy === `confirm-${candidate.id}` ? 'Saving…' : 'Confirm'}
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={() => rejectCandidate(candidate)} disabled={actionBusy === `reject-${candidate.id}`}>
-                          {actionBusy === `reject-${candidate.id}` ? '…' : 'Reject'}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {!candidates.loading && candidateItems.length === 0 && (
-              <p className="mt-4 text-xs font-semibold text-[var(--brand-lavender-ink)]">No publication candidates are waiting for review.</p>
-            )}
-          </section>
-
-          <section className="rounded-[var(--radius-card)] border border-[var(--brand-butter-strong)] bg-[var(--brand-butter)] p-6">
-            <div className="flex items-center gap-2 text-[var(--brand-butter-ink)]">
-              <Upload className="h-5 w-5" />
-              <h3 className="text-xs font-bold uppercase tracking-wider">Evidence management</h3>
-            </div>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--brand-muted)]">Attach proof to one or more activities from the Evidence Library.</p>
-            <button type="button" onClick={() => setCurrentView('evidence')} className="mt-4 flex items-center gap-2 text-sm font-bold text-[var(--brand-primary-hover)] hover:underline">
-              Open Evidence Library <ShieldCheck className="h-4 w-4" />
-            </button>
-          </section>
-
           {!hasAnyData && !activities.loading && (
             <section className="app-surface p-6 text-center">
               <p className="text-sm font-semibold text-[var(--brand-muted)]">Your record is ready for its first real activity.</p>
             </section>
           )}
         </motion.aside>
+        )}
       </div>
     </motion.div>
   );
