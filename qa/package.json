@@ -1,0 +1,12 @@
+{
+  "name": "sanchaya-qa",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real-browser smoke suite (qa/browser_smoke.spec.mjs) driven against a locally-running frontend + backend.",
+  "scripts": {
+    "test": "npx playwright test -c playwright.config.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

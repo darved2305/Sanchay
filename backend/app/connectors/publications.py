@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -20,6 +21,72 @@ import httpx
 from ..core.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_NAME_HONORIFICS = {"dr", "prof", "mr", "mrs", "ms", "miss", "er", "shri", "smt"}
+_NAME_SUFFIXES = {"jr", "sr", "phd", "md", "ii", "iii", "iv"}
+
+
+def _name_tokens(value: str) -> list[str]:
+    """Lowercase, diacritic-stripped name tokens with honorifics/suffixes removed."""
+
+    ascii_value = "".join(
+        ch for ch in unicodedata.normalize("NFKD", value or "") if not unicodedata.combining(ch)
+    )
+    raw_tokens = re.sub(r"[^a-zA-Z\s]", " ", ascii_value.lower()).split()
+    return [token for token in raw_tokens if token not in _NAME_HONORIFICS and token not in _NAME_SUFFIXES]
+
+
+def _given_name_compatible(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(a) == 1 and b.startswith(a):
+        return True
+    if len(b) == 1 and a.startswith(b):
+        return True
+    return False
+
+
+def scholar_identity_match(extracted_name: str, full_name: str) -> tuple[bool, dict[str, Any]]:
+    """Deterministic hard gate for the Google Scholar paste-import.
+
+    Unlike ``candidate_match`` below -- an advisory score, "never a
+    confirmation", because for ORCID the ORCID iD itself is the trust anchor
+    -- there is no persistent identifier for a pasted Scholar page. The
+    claimed name on the page is the only signal, so this function's result
+    directly decides whether anything gets written: it must be able to say no.
+    """
+
+    profile_tokens = _name_tokens(full_name)
+    extracted_tokens = _name_tokens(extracted_name)
+    reasons: dict[str, Any] = {
+        "profile_tokens": profile_tokens,
+        "extracted_tokens": extracted_tokens,
+        "surname_match": False,
+        "given_name_compatible": False,
+        "rule_applied": "no_match",
+    }
+    if len(profile_tokens) < 2 or len(extracted_tokens) < 2:
+        reasons["rule_applied"] = "insufficient_name_tokens"
+        return False, reasons
+
+    def _try(candidate_tokens: list[str]) -> bool:
+        surname_match = candidate_tokens[-1] == profile_tokens[-1]
+        given_compatible = surname_match and _given_name_compatible(candidate_tokens[0], profile_tokens[0])
+        if surname_match:
+            reasons["surname_match"] = True
+        if given_compatible:
+            reasons["given_name_compatible"] = True
+        return surname_match and given_compatible
+
+    if _try(extracted_tokens):
+        reasons["rule_applied"] = "surname_and_given_name_match"
+        return True, reasons
+    if _try(list(reversed(extracted_tokens))):
+        reasons["rule_applied"] = "surname_and_given_name_match_reversed_order"
+        return True, reasons
+    return False, reasons
 
 
 class ExternalApiError(RuntimeError):
