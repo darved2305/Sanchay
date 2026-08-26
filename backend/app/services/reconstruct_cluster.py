@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..connectors.google import HarvestedItem
 from .llm import LLMProvider
-from .reconstruct import _refine_category, _title_similarity, classify_category, is_academic_signal
+from .reconstruct import _title_similarity, classify_category, is_academic_signal
 from .signals import mark_classified
 
 DATE_WINDOW_DAYS = 5
@@ -96,11 +96,6 @@ async def classify_and_cluster_signal(session: AsyncSession, signal: dict[str, A
         return ClusterOutcome(signal_id=signal["id"], cluster_id=None, is_new_cluster=False, actionable=False)
 
     category = classify_category(item)
-    if llm is not None and llm.configured:
-        # Same refinement the batch pipeline applies (reconstruct.py::run_pipeline):
-        # deterministic label first, LLM may re-pick it; falls back to the
-        # deterministic category when the call fails or returns nothing usable.
-        category = await _refine_category([item], category, llm)
     cluster_id, is_new = await _find_or_create_cluster(
         session, signal["profile_id"], category, item.title or item.snippet[:120], signal.get("organization"), signal.get("event_date")
     )

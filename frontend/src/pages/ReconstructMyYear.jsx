@@ -9,8 +9,8 @@ import ProposalCard from '../components/ProposalCard';
 import { useApiQuery, invalidateQueries } from '../lib/queryCache';
 import { pageEnter, cardEnter } from '../lib/motion';
 
-const SOURCE_ICONS = { gmail: SiGmail, google_calendar: SiGooglecalendar, google_drive: SiGoogledrive, gmail_compose: SiGmail };
-const SOURCE_LABELS = { gmail: 'Gmail', google_calendar: 'Calendar', google_drive: 'Drive', gmail_compose: 'Gmail drafts' };
+const SOURCE_ICONS = { gmail: SiGmail, google_calendar: SiGooglecalendar, google_drive: SiGoogledrive };
+const SOURCE_LABELS = { gmail: 'Gmail', google_calendar: 'Calendar', google_drive: 'Drive' };
 
 function currentAcademicYear() {
   const now = new Date();
@@ -54,7 +54,6 @@ export default function ReconstructMyYear({ setCurrentView }) {
   const [oauthNotice, setOauthNotice] = useState('');
 
   const sourceItems = payloadData(sources.data)?.sources || [];
-  const permissionItems = payloadData(sources.data)?.permissions || [];
   const fixtureMode = payloadData(sources.data)?.fixture_mode;
   const cachedItems = listItems(cached.data);
 
@@ -223,51 +222,6 @@ export default function ReconstructMyYear({ setCurrentView }) {
           );
         })}
       </div>
-
-      {/* Write-scope Google permissions. Separated from the harvest sources
-          above because nothing here is scanned -- these let Sanchaya put
-          something back into your Google account, which is why each one is
-          granted on its own rather than bundled into the read-only connect. */}
-      {!sources.loading && permissionItems.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-[var(--brand-subtle)]">
-            Permissions Sanchaya can use on your behalf
-          </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {permissionItems.map((permission) => {
-              const Icon = SOURCE_ICONS[permission.provider];
-              const connected = permission.status === 'connected';
-              const notConfigured = permission.status === 'not_configured';
-              return (
-                <div key={permission.provider} className="app-surface flex flex-col gap-2 !rounded-[var(--radius-card)] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="icon-chip !h-8 !w-8 chip-surface">{Icon && <Icon className="h-4 w-4" />}</span>
-                      <span className="text-sm font-bold text-[var(--brand-ink)]">{SOURCE_LABELS[permission.provider]}</span>
-                    </div>
-                    <span className={`chip !border-0 !px-2 !py-0 !text-[11px] ${connected ? 'chip-mint' : 'chip-surface'}`}>
-                      {connected ? <CheckCircle2 className="h-3 w-3" /> : null} {connected ? 'Connected' : notConfigured ? 'Not configured' : 'Not connected'}
-                    </span>
-                  </div>
-                  <p className="text-xs font-medium text-[var(--brand-muted)]">
-                    Lets the Assistant save an email to your Gmail Drafts. Sanchaya never sends it — you press send.
-                  </p>
-                  {!notConfigured && (
-                    <button
-                      type="button"
-                      onClick={() => handleOAuth(permission.provider, connected)}
-                      disabled={oauthBusy === permission.provider}
-                      className="text-left text-xs font-bold text-[var(--brand-primary-hover)] hover:underline disabled:opacity-50"
-                    >
-                      {oauthBusy === permission.provider ? 'Working…' : connected ? 'Disconnect' : 'Connect with Google'}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {scanning && (
         <motion.div {...cardEnter} className="app-surface flex flex-col items-center gap-3 !rounded-[var(--radius-panel)] p-10 text-center">

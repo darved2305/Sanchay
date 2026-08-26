@@ -291,16 +291,3 @@ def normalize_readiness(value: Any) -> float:
         value = scalar(value)
     value = float(value)
     return value * 100 if 0 <= value <= 1 else value
-
-
-# Settings kwargs meaning "no LLM provider is configured at all".
-#
-# Nulling only GROQ_API_KEY is not enough: Settings still reads the repo-root
-# .env, so with LLM_PROVIDER=openrouter and an OpenRouter key present the
-# provider stayed configured and these fallback tests quietly made live API
-# calls instead of exercising the deterministic path they exist to protect.
-UNCONFIGURED_LLM = {
-    "llm_provider": "groq",
-    "groq_api_key": None,
-    "openrouter_api_key": None,
-}

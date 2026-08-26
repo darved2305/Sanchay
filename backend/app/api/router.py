@@ -2,11 +2,10 @@
 
 from fastapi import APIRouter
 
-from . import action_inbox, activities, admin, admin_requests, appraisals, assistant, auth_profile, career, cv_import, deadline_rescue, evidence, forms, grantops, lor, network, notifications, publications, reconstruct, shared_facts, teaching_change
+from . import action_inbox, activities, admin, admin_requests, appraisals, auth_profile, career, cv_import, deadline_rescue, evidence, forms, grantops, lor, network, notifications, publications, reconstruct, shared_facts, teaching_change
 
 api_router = APIRouter()
 api_router.include_router(auth_profile.router)
-api_router.include_router(assistant.router)
 api_router.include_router(action_inbox.router)
 api_router.include_router(grantops.router)
 api_router.include_router(activities.router)

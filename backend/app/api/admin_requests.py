@@ -108,7 +108,7 @@ async def _run_request_processing(request_id: UUID, institution_id: UUID, admin_
         if header is None:
             await update_job(session, job_id, status="failed", error="No table header row was found in this file")
             return
-        header_row_index, labels, columns = header
+        header_row_index, labels = header
         await update_job(session, job_id, progress=35, progress_label=f"{len(labels)} columns detected; finding matching faculty…")
 
         clauses = ["p.institution_id = :institution_id", "p.role = 'faculty'"]
@@ -141,7 +141,7 @@ async def _run_request_processing(request_id: UUID, institution_id: UUID, admin_
             faculty_rows.append({"faculty_id": str(faculty_id), "fields": resolved})
 
         try:
-            output_content = build_multi_faculty_output(content, header_row_index, labels, faculty_rows, columns)
+            output_content = build_multi_faculty_output(content, header_row_index, labels, faculty_rows)
         except (ValueError, KeyError) as exc:
             await update_job(session, job_id, status="failed", error=f"Could not generate the completed file: {exc}")
             return
