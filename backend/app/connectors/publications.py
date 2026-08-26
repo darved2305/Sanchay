@@ -294,6 +294,18 @@ class OpenAlexClient(_HttpConnector):
         return items
 
 
+def _crossref_year(message: dict[str, Any]) -> int | None:
+    """First year from a Crossref message's date-parts, tolerating missing
+    keys and empty inner lists ("date-parts": [[]], returned for incomplete
+    dates) -- returns None when no year is present."""
+
+    for key in ("published-print", "published-online"):
+        parts = ((message.get(key) or {}).get("date-parts")) or []
+        if parts and parts[0]:
+            return parts[0][0]
+    return None
+
+
 class CrossrefClient(_HttpConnector):
     async def work(self, doi: str) -> dict[str, Any] | None:
         headers: dict[str, str] = {}
@@ -319,7 +331,7 @@ class CrossrefClient(_HttpConnector):
         item.title = str((message.get("title") or [item.title])[0]).strip() or item.title
         item.venue = item.venue or ((message.get("container-title") or [None])[0])
         item.publisher = item.publisher or message.get("publisher")
-        item.year = item.year or ((message.get("published-print") or message.get("published-online") or {}).get("date-parts") or [[None]])[0][0]
+        item.year = item.year or _crossref_year(message)
         item.citation_count = item.citation_count or message.get("is-referenced-by-count")
         item.metadata = {**item.metadata, "crossref": message}
         if not item.authors:

@@ -347,6 +347,22 @@ export const api = {
     markRead: (conversationId) => apiRequest(`/messages/conversations/${conversationId}/read`, { method: 'POST' }),
   },
 
+  assistant: {
+    sendMessage: ({ message, conversation_id }) => apiRequest('/assistant/message', {
+      method: 'POST',
+      body: { message, conversation_id: conversation_id || null },
+    }),
+    confirmPlan: (planId, { approve, always_allow_scope } = {}) => apiRequest(`/assistant/plans/${planId}/confirm`, {
+      method: 'POST',
+      body: { approve, always_allow_scope: always_allow_scope || null },
+    }),
+    listConversations: () => apiRequest('/assistant/conversations'),
+    getConversation: (id) => apiRequest(`/assistant/conversations/${id}`),
+    getPermissions: () => apiRequest('/assistant/permissions'),
+    setPermission: ({ scope, mode }) => apiRequest('/assistant/permissions', { method: 'PUT', body: { scope, mode } }),
+    getCapabilities: () => apiRequest('/assistant/capabilities'),
+  },
+
 };
 
 export async function uploadEvidenceFile(file, activityIds = []) {
