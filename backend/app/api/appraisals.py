@@ -15,6 +15,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.academic_year import derive_academic_year
 from ..core.auth import CurrentUser, require_admin, require_faculty, get_current_user
 from ..core.config import Settings, get_settings
 from ..core.db import get_db
@@ -97,6 +98,15 @@ async def _cycle(session: AsyncSession, cycle_id: UUID, user: CurrentUser) -> di
 
 
 async def _open_cycle(session: AsyncSession, user: CurrentUser) -> dict[str, Any]:
+    """The open cycle a teacher is working on right now.
+
+    Ordering by due date alone picks whichever cycle an institution left open
+    longest, which is a year behind as soon as the new session starts -- and a
+    cycle for last year cannot see anything recorded this year, so the whole
+    appraisal reads as empty. Prefer the cycle for the current academic year and
+    fall back to due date only when no cycle covers it.
+    """
+
     result = await session.execute(
         text(
             """
@@ -105,10 +115,14 @@ async def _open_cycle(session: AsyncSession, user: CurrentUser) -> dict[str, Any
             from public.appraisal_cycles c
             join public.appraisal_templates t on t.id = c.template_id
             where c.institution_id = :institution_id and c.status = 'open'
-            order by c.due_at nulls last, c.created_at desc limit 1
+            order by case when c.academic_year = :current_year then 0 else 1 end,
+                     c.due_at nulls last, c.created_at desc limit 1
             """
         ),
-        {"institution_id": institution_id_or_403(user)},
+        {
+            "institution_id": institution_id_or_403(user),
+            "current_year": derive_academic_year(datetime.now(UTC).date()),
+        },
     )
     return mapping_or_404(result, "No open appraisal cycle is available")
 
@@ -271,6 +285,31 @@ async def _persist_readiness(session: AsyncSession, submission_id: UUID, readine
     await session.commit()
 
 
+async def readiness_snapshot(
+    session: AsyncSession, user: CurrentUser, cycle: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Everything the appraisal is made of, for one cycle, computed once.
+
+    Every surface that shows a readiness percentage -- the appraisal page, the
+    dashboard tile, the deadline-rescue summary -- goes through here, so they
+    cannot drift apart the way a cached column and a live calculation do.
+    """
+
+    cycle = cycle or await _open_cycle(session, user)
+    sections = await _sections(session, cycle["template_id"])
+    activities = await _activities_for_cycle(session, user.user_id, cycle["academic_year"])
+    for section in sections:
+        section["items"] = [
+            activity for activity in activities if _category_matches(section, str(activity["category"]))
+        ]
+    return {
+        "cycle": cycle,
+        "readiness": compute_appraisal_readiness(sections),
+        "sections": sections,
+        "activity_count": len(activities),
+    }
+
+
 @router.get("/cycles")
 async def list_cycles(user: CurrentUser = Depends(require_faculty), session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     result = await session.execute(
@@ -295,13 +334,8 @@ async def readiness(
     user: CurrentUser = Depends(require_faculty),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    cycle = await (_cycle(session, cycle_id, user) if cycle_id else _open_cycle(session, user))
-    sections = await _sections(session, cycle["template_id"])
-    activities = await _activities_for_cycle(session, user.user_id, cycle["academic_year"])
-    for section in sections:
-        section["items"] = [activity for activity in activities if _category_matches(section, str(activity["category"]))]
-    readiness_value = compute_appraisal_readiness(sections)
-    return {"cycle": cycle, "readiness": readiness_value, "sections": sections, "activity_count": len(activities)}
+    cycle = await _cycle(session, cycle_id, user) if cycle_id else None
+    return await readiness_snapshot(session, user, cycle)
 
 
 @router.post("/cycles/{cycle_id}/draft")
@@ -324,12 +358,9 @@ async def generate_draft(cycle_id: UUID, user: CurrentUser = Depends(require_fac
             {"cycle_id": cycle_id, "profile_id": user.user_id},
         )
         submission_id = created.scalar_one()
-    sections = await _sections(session, cycle["template_id"])
-    activities = await _activities_for_cycle(session, user.user_id, cycle["academic_year"])
-    readiness_sections: list[dict[str, Any]] = []
-    for section in sections:
-        matching = [activity for activity in activities if _category_matches(section, str(activity["category"]))]
-        readiness_sections.append({**section, "items": matching})
+    snapshot = await readiness_snapshot(session, user, cycle)
+    for section in snapshot["sections"]:
+        matching = section["items"]
         for position, activity in enumerate(matching):
             await session.execute(
                 text(
@@ -341,8 +372,7 @@ async def generate_draft(cycle_id: UUID, user: CurrentUser = Depends(require_fac
                 ),
                 {"submission_id": submission_id, "section_id": section["id"], "activity_id": activity["id"], "position": position},
             )
-    readiness_value = compute_appraisal_readiness(readiness_sections)
-    await session.execute(text("update public.appraisal_submissions set readiness = :readiness where id = :id"), {"readiness": readiness_value, "id": submission_id})
+    await session.execute(text("update public.appraisal_submissions set readiness = :readiness where id = :id"), {"readiness": snapshot["readiness"], "id": submission_id})
     await session.commit()
     return await _submission(session, submission_id, user)
 

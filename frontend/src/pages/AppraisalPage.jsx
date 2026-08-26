@@ -52,7 +52,13 @@ export default function AppraisalPage() {
   const currentStatus = submission?.status || openCycle?.submission_status || 'not_started';
   const canEdit = currentStatus === 'draft' || currentStatus === 'returned';
   const canSubmit = submission && (currentStatus === 'draft' || currentStatus === 'returned');
-  const readinessPercent = Number(submission?.readiness ?? readinessData.readiness ?? 0);
+  // Prefer the live figure from /readiness over the submission's own. Both are
+  // computed by the same helper, but the submission's is measured against the
+  // items captured when its draft was generated, so recording an activity
+  // afterwards moves the dashboard tile and the deadline-rescue summary while
+  // leaving this page behind. Regenerating the draft brings the items back in
+  // line; until then the record-based number is the one that is true everywhere.
+  const readinessPercent = Number(readinessData.readiness ?? submission?.readiness ?? 0);
   const readinessLoaded = Boolean(submission || readiness.data) && !readiness.loading;
   const reviewComments = useMemo(() => (submission?.reviews || []).filter((review) => review.comment), [submission]);
 

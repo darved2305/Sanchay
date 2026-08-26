@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth import CurrentUser, get_current_user, require_admin, require_faculty
 from ..core.db import get_db
+from .appraisals import readiness_snapshot
 from .schemas import ProfilePatch
 from .utils import institution_id_or_403
 
@@ -191,6 +192,46 @@ async def complete_onboarding(
     return {"ok": True}
 
 
+async def _appraisal_tile(
+    session: AsyncSession, user: CurrentUser, tile: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Overlay the dashboard's appraisal tile with the live readiness figure.
+
+    The surrounding query reads ``appraisal_submissions.readiness``, a value
+    cached when the draft was generated. Recording an activity afterwards moves
+    the real percentage but not the cached one, so the dashboard and the
+    appraisal page showed two different numbers for the same appraisal. Both now
+    read ``readiness_snapshot``.
+    """
+
+    try:
+        snapshot = await readiness_snapshot(session, user)
+    except HTTPException:
+        return tile  # No open cycle: leave whatever the query found.
+    cycle = snapshot["cycle"]
+    # The submission has to be re-read for *this* cycle: the surrounding query
+    # picks the open cycle by due date, which is not necessarily the one
+    # readiness_snapshot settled on.
+    submission = await session.execute(
+        text(
+            "select id, status::text as status from public.appraisal_submissions "
+            "where cycle_id = :cycle_id and profile_id = :profile_id"
+        ),
+        {"cycle_id": cycle["id"], "profile_id": user.user_id},
+    )
+    row = submission.mappings().first()
+    return {
+        "cycle_id": cycle["id"],
+        "name": cycle["name"],
+        "academic_year": cycle["academic_year"],
+        "due_at": cycle["due_at"],
+        "submission_id": row["id"] if row else None,
+        "status": row["status"] if row else "not_started",
+        "readiness": snapshot["readiness"],
+        "activity_count": snapshot["activity_count"],
+    }
+
+
 @router.get("/dashboard/faculty")
 async def faculty_dashboard(
     user: CurrentUser = Depends(require_faculty),
@@ -265,7 +306,7 @@ async def faculty_dashboard(
     pending_evidence = dashboard_row["pending_evidence"] or []
     return {
         "full_name": user.profile.get("full_name"),
-        "appraisal": dashboard_row["appraisal"],
+        "appraisal": await _appraisal_tile(session, user, dashboard_row["appraisal"]),
         "inbox": dashboard_row["inbox"] or [],
         "deadlines": dashboard_row["deadlines"] or [],
         "recent_activities": dashboard_row["recent_activities"] or [],

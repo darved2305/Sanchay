@@ -61,9 +61,49 @@ achievements).
 - `evidence-library/sample_certificate.pdf`, `.jpg` -- generic evidence
   uploads (PDF and image) for the Evidence Library.
 
+## Demo set (`demo1_*`)
+
+The fixtures above have already been imported into the live dashboard, so
+re-uploading them during a demo collides with records that exist. The
+`demo1_*` files are a parallel, freshly-generated set built around a
+different persona (Dr. Meera Iyer), a different student (Aditi Kulkarni)
+and different companies, so every upload lands as a new record.
+
+```
+.venv/bin/python test-files/generate_demo_files.py
+```
+
+50 files. The script derives its repository coverage from
+`repository_classify.TAXONOMY` rather than a hand-written list, so every
+(category, type) leaf the classifier can emit gets a document, and it
+re-runs the real classifier over what it wrote to prove each one files
+where intended.
+
+- `repository-samples/<category>/demo1_<Type>.pdf` -- 37 documents, one per
+  taxonomy leaf, foldered by category: research (11), teaching (7),
+  professional_development (4), academic_service (5), student_mentorship
+  (6), administration (3), other (1). Includes OJT, internship offer,
+  internship completion and placement offer letters from Deloitte, Amazon,
+  Infosys and Goldman Sachs.
+- `cv-import/demo1_cv.pdf`, `.docx` -- yields 8 activities across FDP,
+  invited talk, publication, reviewing, mentorship, committee, award and
+  grant, all dated in the current academic year so they land in the open
+  appraisal cycle.
+- `any-form/demo1_appraisal_form.xlsx` -- 7 `Label:` fields.
+- `admin-batch/demo1_department_sheet.xlsx` -- a *table* header (no trailing
+  colons), which is the shape `detect_header_row` looks for. Column B is
+  deliberately blank: values must be written into A/C/D/E, not shifted left.
+- `teaching-change/demo1_course_v1/` vs `demo1_course_v2/` -- one file added,
+  one unchanged, one edited.
+- `evidence-library/demo1_certificate.pdf`, `.jpg`.
+
 ## Known gaps this surfaced
 
 - CV Import: no path for image (OCR) or spreadsheet CVs -- PDF/DOCX only.
+- Repository taxonomy: `research/Project Report` is unreachable by the
+  deterministic rules. `("project report", student_mentorship, ...)` fires
+  first, so a funded project's own final report is filed under student
+  mentorship. Only an LLM pass or a manual correction can place it.
 - `app/api/forms.py`'s docstring claims an LLM fallback for unrecognized
   form labels; no such call exists in the code. Every unmatched label
   becomes `needs_new_info` today.
