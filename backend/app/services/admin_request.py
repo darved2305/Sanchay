@@ -19,23 +19,27 @@ from .any_form import resolve_field
 MAX_HEADER_SCAN_ROWS = 10
 
 
-def detect_header_row(content: bytes) -> tuple[int, list[str]] | None:
+def detect_header_row(content: bytes) -> tuple[int, list[str], list[int]] | None:
     """Find the first row that looks like a table header: at least two
     non-empty text cells, none of which end in ':' (that's Any Form's
-    label:value shape, not a table header)."""
+    label:value shape, not a table header). Returns the 1-based row index,
+    the label texts, and each label's real 1-based column index (blank
+    spacer columns are skipped here but must not shift later writes)."""
 
     workbook = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     sheet = workbook.worksheets[0]
     for row_index in range(1, min(sheet.max_row or 0, MAX_HEADER_SCAN_ROWS) + 1):
         labels: list[str] = []
+        columns: list[int] = []
         for col_index in range(1, (sheet.max_column or 0) + 1):
             value = sheet.cell(row=row_index, column=col_index).value
             text = str(value).strip() if value is not None else ""
             if text:
                 labels.append(text)
+                columns.append(col_index)
         non_colon_labels = [label for label in labels if not label.endswith(":")]
         if len(non_colon_labels) >= 2:
-            return row_index, labels
+            return row_index, labels, columns
     return None
 
 
@@ -49,15 +53,18 @@ def resolve_row_for_faculty(labels: list[str], context: dict[str, Any]) -> dict[
     return row
 
 
-def build_multi_faculty_output(content: bytes, header_row_index: int, labels: list[str], faculty_rows: list[dict[str, Any]]) -> bytes:
+def build_multi_faculty_output(content: bytes, header_row_index: int, labels: list[str], faculty_rows: list[dict[str, Any]], columns: list[int] | None = None) -> bytes:
     """Write one row per faculty below the header, preserving the header and
-    everything above it exactly as uploaded."""
+    everything above it exactly as uploaded. ``columns`` holds each label's
+    real 1-based sheet column; when omitted the labels are assumed to be
+    contiguous starting at column A."""
 
     workbook = openpyxl.load_workbook(io.BytesIO(content))
     sheet = workbook.worksheets[0]
     write_row = header_row_index + 1
+    label_columns = columns if columns is not None else list(range(1, len(labels) + 1))
     for faculty_row in faculty_rows:
-        for col_index, label in enumerate(labels, start=1):
+        for col_index, label in zip(label_columns, labels):
             resolved = faculty_row["fields"].get(label, {})
             value = resolved.get("value")
             sheet.cell(row=write_row, column=col_index, value=value if value not in (None, "") else "")

@@ -577,3 +577,9 @@ def fixture_harvest() -> list[HarvestedItem]:
             raw={"mimeType": "image/jpeg"},
         ),
     ]
+
+
+# Google connections that grant a *write* capability rather than a harvest
+# source. Kept separate from CONNECTOR_PROVIDERS so the reconstruction pipeline
+# never treats them as something to scan, while the UI can still offer them.
+WRITE_PERMISSION_PROVIDERS = ("gmail_compose",)
