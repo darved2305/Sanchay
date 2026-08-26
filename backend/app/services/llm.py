@@ -145,9 +145,15 @@ class LLMProvider:
             Ordered fallbacks. If the primary is rate-limited upstream,
             OpenRouter tries the next one instead of surfacing an error, which
             is what turns a demo-time 429 into a slightly different answer
-            rather than "the assistant is down". ``partition: "none"`` pools
-            endpoints across every candidate so routing picks the fastest
-            available rather than staying within one model's own providers.
+            rather than "the assistant is down".
+
+        The last two interact, and the interaction is easy to get backwards:
+        ``partition: "none"`` pools endpoints across *every* candidate model, so
+        sorting by throughput then overrides the ``models`` order entirely --
+        observed serving a slow last-resort fallback while the intended primary
+        sat unused. ``partition: "model"`` sorts providers *within* a model, so
+        the preference order is honoured and throughput only decides which host
+        serves the model actually chosen.
         """
 
         if not self._use_openrouter:
@@ -155,7 +161,7 @@ class LLMProvider:
 
         options: dict[str, Any] = {
             "provider": {
-                "sort": {"by": "throughput", "partition": "none"},
+                "sort": {"by": "throughput", "partition": "model"},
                 "preferred_max_latency": {"p90": self.settings.openrouter_max_latency_p90},
                 "allow_fallbacks": True,
             }
@@ -273,6 +279,17 @@ class LLMProvider:
                 response = await client.post(route.url, headers=route.headers, json=payload)
                 response.raise_for_status()
             body = response.json()
+            # Which model actually served this leg. With a fallback chain the
+            # answer is not necessarily the one that was requested, so without
+            # logging it a slow or off-tone turn is impossible to attribute.
+            logger.info(
+                "llm_chat_with_tools_ok",
+                extra={
+                    "requested_model": route.model,
+                    "served_model": body.get("model"),
+                    "provider": body.get("provider"),
+                },
+            )
             return body["choices"][0]["message"]
         except (httpx.HTTPError, KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
             # httpx's HTTPStatusError message carries only the status code, but
