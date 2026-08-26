@@ -87,14 +87,26 @@ async def _load_history(session: AsyncSession, conversation_id: str) -> list[dic
     rows = result.mappings().all()
     messages: list[dict] = []
     for row in rows:
-        message: dict = {"role": row["role"]}
-        if row["content"] is not None:
-            message["content"] = row["content"]
-        if row["tool_calls"]:
-            message["tool_calls"] = row["tool_calls"]
-        if row["role"] == "tool" and row["tool_result"] is not None:
-            message["content"] = json.dumps(row["tool_result"])
-        messages.append(message)
+        # Only the conversation as a person would read it: what the teacher
+        # asked and what the assistant answered.
+        #
+        # The tool-call plumbing is deliberately NOT replayed. A provider
+        # validates that every `role: "tool"` message carries a `tool_call_id`
+        # matching a call in the preceding assistant message, and those ids are
+        # minted by whichever model produced them. Two things break that here:
+        # this loop never persisted the id in the first place, and a fallback
+        # chain means the next turn may be served by a different model that
+        # rejects another's id format outright (observed as a provider 400,
+        # "tool call id is invalid", which degrades the whole turn).
+        #
+        # Nothing important is lost: the assistant's own reply already states
+        # the figures and titles it found, so the model keeps the grounded
+        # context without the fragile machinery around it.
+        if row["role"] not in ("user", "assistant"):
+            continue
+        if not row["content"]:
+            continue
+        messages.append({"role": row["role"], "content": row["content"]})
     return messages
 
 

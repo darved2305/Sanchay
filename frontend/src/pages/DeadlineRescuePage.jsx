@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, XCircle, Zap } from 'lucide-react';
 import { api, payloadData } from '../lib/api';
+import { invalidateQueries } from '../lib/queryCache';
 import { runtimeConfigMessage } from '../lib/config';
 import { Button, Notice, PageHeader, ProgressBar } from '../components/ui';
 import { pageEnter, cardEnter } from '../lib/motion';
@@ -12,6 +13,19 @@ const STEP_LABELS = {
   evidence_checked: 'Evidence checked',
   appraisal_generated: 'Appraisal prepared',
 };
+
+// A rescue run syncs publications, recovers activities and regenerates the
+// appraisal draft server-side. The query cache has no TTL, so without dropping
+// these keys "Go to Appraisal" renders the counts and readiness as they were
+// *before* the run -- the one moment the user is most certain they changed.
+const REFRESHED_BY_RESCUE = [
+  ['appraisal'],
+  ['dashboard', 'faculty'],
+  ['activities'],
+  ['publications', 'candidates'],
+  ['reconstruct'],
+  ['evidence'],
+];
 
 async function pollRescue(jobId, onUpdate, { intervalMs = 1200, maxAttempts = 90 } = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -34,6 +48,7 @@ export default function DeadlineRescuePage({ setCurrentView }) {
       const started = payloadData(await api.appraisals.rescue());
       const finished = await pollRescue(started.job_id, setJob);
       setJob(finished);
+      REFRESHED_BY_RESCUE.forEach((key) => invalidateQueries(key));
       if (finished.status === 'failed') setError(finished.error || 'Deadline Rescue could not complete.');
     } catch (err) {
       setError(runtimeConfigMessage(err));
