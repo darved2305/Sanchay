@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..connectors.google import (
     CONNECTOR_PROVIDERS,
+    WRITE_PERMISSION_PROVIDERS,
     SCOPES,
     HarvestedItem,
     build_authorize_url,
@@ -67,8 +68,24 @@ async def list_sources(
             "external_account_email": connection.get("external_account_email") if connection else None,
             "last_synced_at": connection.get("last_synced_at") if connection else None,
         })
+    # Write-scope Google connections. Deliberately not in ``sources``: they are
+    # never harvested from, and listing them there would imply the
+    # reconstruction pipeline reads your drafts. They are surfaced here because
+    # this is the page every "connect Google" instruction in the product points
+    # at -- including the assistant's own draft_email failure message, which
+    # previously named a control that did not exist anywhere.
+    permissions = []
+    for provider in WRITE_PERMISSION_PROVIDERS:
+        connection = connected.get(provider)
+        permissions.append({
+            "provider": provider,
+            "status": connection["status"] if connection else ("not_configured" if not google_configured else "disconnected"),
+            "external_account_email": connection.get("external_account_email") if connection else None,
+        })
+
     return {
         "sources": sources,
+        "permissions": permissions,
         "google_oauth_configured": google_configured,
         "fixture_mode": settings.reconstruct_fake_sources,
         "publications_available": True,

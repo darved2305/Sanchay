@@ -28,6 +28,8 @@ from app.services.teaching_change import (
     summarize_changes,
 )
 
+from .support import UNCONFIGURED_LLM
+
 
 def test_quick_add_heuristic_detects_category_and_duration() -> None:
     parsed = _heuristic_parse("Conducted a 2-hour seminar on GenAI today for TE IT")
@@ -41,7 +43,7 @@ def test_quick_add_heuristic_falls_back_to_other() -> None:
 
 
 def test_quick_add_without_llm_key_uses_heuristic() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     result = asyncio.run(parse_quick_add("Attended a workshop on cloud computing", LLMProvider(settings)))
     assert result["category"] == "workshop_fdp"
     assert result["academic_year"]
@@ -63,7 +65,7 @@ def test_cv_heuristic_extracts_keyworded_lines() -> None:
 
 
 def test_cv_import_without_llm_key_uses_heuristic() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     cv_text = "Delivered an invited talk at NIT Surat, 2022\n"
     drafts = asyncio.run(extract_cv_activities(cv_text, LLMProvider(settings)))
     assert len(drafts) == 1
@@ -143,7 +145,7 @@ def test_reconstruct_fixture_keeps_independent_signals_as_separate_candidates() 
     assert len(candidates) >= 3
 
 
-def _make_xlsx(rows: list[list[str]]) -> bytes:
+def _make_xlsx(rows: list[list[str | None]]) -> bytes:
     import openpyxl
 
     workbook = openpyxl.Workbook()
@@ -178,7 +180,7 @@ def test_any_form_unknown_label_needs_new_info() -> None:
 
 
 def test_any_form_llm_fallback_without_key_still_needs_new_info() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     value, confidence, resolve_status = asyncio.run(
         resolve_field_with_llm("Favorite programming language", {}, LLMProvider(settings))
     )
@@ -186,7 +188,7 @@ def test_any_form_llm_fallback_without_key_still_needs_new_info() -> None:
 
 
 def test_any_form_llm_fallback_skips_llm_when_already_resolved() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     context = {"full_name": "Dr. Ananya Sharma"}
     value, confidence, resolve_status = asyncio.run(resolve_field_with_llm("Faculty Name", context, LLMProvider(settings)))
     assert value == "Dr. Ananya Sharma" and resolve_status == "auto_filled"
@@ -237,9 +239,20 @@ def test_admin_request_detects_table_header_not_label_colon_shape() -> None:
     ])
     result = detect_header_row(content)
     assert result is not None
-    row_index, labels = result
+    row_index, labels, columns = result
     assert row_index == 2
     assert labels == ["Faculty Name", "Employee Code", "Number of FDPs"]
+    assert columns == [1, 2, 3]
+
+
+def test_admin_request_header_detection_preserves_blank_column_positions() -> None:
+    content = _make_xlsx([["Name", None, "Publications"], ["", "", ""]])
+    result = detect_header_row(content)
+    assert result is not None
+    row_index, labels, columns = result
+    assert row_index == 1
+    assert labels == ["Name", "Publications"]
+    assert columns == [1, 3]
 
 
 def test_admin_request_resolves_one_row_per_faculty_from_their_own_context() -> None:
@@ -279,6 +292,25 @@ def test_admin_request_writes_one_row_per_faculty_below_header() -> None:
     assert sheet["A3"].value == "Dr. B" and sheet["B3"].value == 5
 
 
+def test_admin_request_writes_values_into_real_columns_when_header_has_blanks() -> None:
+    content = _make_xlsx([["Name", None, "Publications"], ["", "", ""]])
+    detected = detect_header_row(content)
+    assert detected is not None
+    _, labels, columns = detected
+    faculty_rows = [
+        {"fields": {"Name": {"value": "Dr. A"}, "Publications": {"value": 7}}},
+    ]
+    output = build_multi_faculty_output(content, 1, labels, faculty_rows, columns)
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(io.BytesIO(output))
+    sheet = workbook.active
+    assert sheet["A1"].value == "Name" and sheet["C1"].value == "Publications"
+    assert sheet["A2"].value == "Dr. A"
+    assert sheet["B2"].value in (None, "")
+    assert sheet["C2"].value == 7
+
+
 def test_teaching_change_detects_added_removed_and_modified_files() -> None:
     files_a = [
         SnapshotFile("syllabus.pdf", "hash1", "Week 1: intro\nWeek 2: basics"),
@@ -316,7 +348,7 @@ def test_teaching_change_deterministic_descriptions_reflect_the_diff() -> None:
 
 
 def test_teaching_change_summarize_without_llm_key_falls_back_to_deterministic() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     diff = {"added": ["lab2.pdf"], "removed": [], "changed": [], "unchanged": []}
     result = asyncio.run(summarize_changes(diff, LLMProvider(settings)))
     assert len(result) == 1
@@ -324,7 +356,7 @@ def test_teaching_change_summarize_without_llm_key_falls_back_to_deterministic()
 
 
 def test_teaching_change_empty_diff_summarizes_to_nothing() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     diff = {"added": [], "removed": [], "changed": [], "unchanged": ["syllabus.pdf"]}
     result = asyncio.run(summarize_changes(diff, LLMProvider(settings)))
     assert result == []
@@ -359,7 +391,7 @@ def test_lor_draft_never_invents_achievements_when_none_recorded() -> None:
 
 
 def test_lor_polish_without_llm_key_returns_deterministic_draft_unchanged() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     draft = draft_letter(LOR_FACTS)
     result = asyncio.run(polish_letter(draft, LLMProvider(settings)))
     assert result == draft

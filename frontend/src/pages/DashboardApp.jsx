@@ -21,6 +21,7 @@ import CommunityPage from './CommunityPage';
 import ProfilePage from './ProfilePage';
 import EvidencePage from './EvidencePage';
 import AppraisalPage from './AppraisalPage';
+import AssistantPage from './AssistantPage';
 import AddActivityModal from '../components/AddActivityModal';
 import QuickAddModal from '../components/QuickAddModal';
 import { Button, EmptyState, Skeleton } from '../components/ui';
@@ -74,6 +75,12 @@ export default function DashboardApp() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [currentView, setCurrentView] = useState('dashboard');
+  // Latches on the first visit to the Assistant so it is never mounted for
+  // users who don't open it, but is never unmounted afterwards either.
+  const [assistantOpened, setAssistantOpened] = useState(false);
+  useEffect(() => {
+    if (currentView === 'assistant') setAssistantOpened(true);
+  }, [currentView]);
   const [activitySearch, setActivitySearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
@@ -146,6 +153,15 @@ export default function DashboardApp() {
           {currentRole === 'Admin' && currentView === 'admin-events' && <AdminInstitutionEvents />}
           {currentRole === 'Admin' && currentView === 'admin-requests' && <AdminRequestsReports />}
           {currentRole === 'Faculty' && currentView === 'dashboard' && <DashboardOverview profile={profile} setCurrentView={setCurrentView} onOpenAddModal={() => openAddModal()} />}
+          {/* The Assistant stays mounted once opened, and is hidden rather than
+              unmounted when another view is active. A turn can take tens of
+              seconds; unmounting mid-flight abandoned the request and dropped
+              the conversation back to an empty one on return. */}
+          {currentRole === 'Faculty' && assistantOpened && (
+            <div className={currentView === 'assistant' ? undefined : 'hidden'} aria-hidden={currentView !== 'assistant'}>
+              <AssistantPage setCurrentView={setCurrentView} />
+            </div>
+          )}
           {currentRole === 'Faculty' && currentView === 'activities' && <ActivitiesSubmissions initialQuery={activitySearch} setCurrentView={setCurrentView} onOpenAddModal={openAddModal} />}
           {currentRole === 'Faculty' && currentView === 'action-inbox' && <ActionInboxPage />}
           {currentRole === 'Faculty' && currentView === 'grantops' && <GrantOpsPage />}

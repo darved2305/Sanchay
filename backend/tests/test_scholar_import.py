@@ -16,6 +16,8 @@ from app.core.config import Settings
 from app.services.llm import LLMProvider
 from app.services.scholar_import import _coerce_int, _heuristic_extract_scholar, extract_scholar_profile
 
+from .support import UNCONFIGURED_LLM
+
 
 def test_scholar_identity_match_exact_name() -> None:
     matched, reasons = scholar_identity_match("Rajesh Sharma", "Rajesh Sharma")
@@ -103,7 +105,7 @@ def test_scholar_heuristic_extracts_title_authors_venue_year_citations() -> None
 
 
 def test_scholar_import_without_llm_key_uses_heuristic() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     result = asyncio.run(extract_scholar_profile(_SAMPLE_SCHOLAR_TEXT, LLMProvider(settings)))
     assert result is not None
     assert result["person_name"] == "Rajesh Sharma"
@@ -115,7 +117,7 @@ def test_scholar_import_without_llm_key_uses_heuristic() -> None:
 
 
 def test_scholar_import_no_name_extracted_fails_closed() -> None:
-    settings = Settings(groq_api_key=None)
+    settings = Settings(**UNCONFIGURED_LLM)
     result = asyncio.run(extract_scholar_profile("   \n\n   ", LLMProvider(settings)))
     assert result is None
 
