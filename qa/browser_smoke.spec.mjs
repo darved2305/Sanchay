@@ -72,7 +72,7 @@ test('seed faculty can authenticate through the real login form', async ({ page 
   await page.locator('#signin-password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).last().click();
   await expect(page).toHaveURL(/\/dashboard(?:\/|$)/, { timeout: 15_000 });
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: `${screenshots}/faculty-dashboard.png`, fullPage: true });
 
   expect(diagnostics.consoleErrors, diagnostics.consoleErrors.join('\n')).toEqual([]);
@@ -89,9 +89,9 @@ test('faculty can click through the compulsory record, evidence, profile and app
   await page.locator('#signin-email').fill(email);
   await page.locator('#signin-password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).last().click();
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 20_000 });
 
-  await page.getByRole('button', { name: /activities \/ record/i }).click();
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
   await expect(page.getByRole('heading', { name: /activities & submissions/i })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: `${screenshots}/activities.png`, fullPage: true });
@@ -174,7 +174,7 @@ test('faculty registration creates a real account or confirmation request', asyn
   await page.locator('input[type="checkbox"]').check();
   await page.getByRole('button', { name: /create faculty account/i }).click();
   const confirmationNotice = page.getByText(/account created\. check your email/i);
-  const confirmedSession = page.getByRole('heading', { name: /welcome,/i });
+  const confirmedSession = page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i });
   await expect(confirmationNotice.or(confirmedSession)).toBeVisible({ timeout: 30_000 });
   if (await confirmationNotice.isVisible().catch(() => false)) return;
 });
@@ -190,9 +190,9 @@ test('confirmed new faculty can persist an activity across reload', async ({ pag
   await page.locator('#signin-email').fill(email);
   await page.locator('#signin-password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).last().click();
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
 
-  await page.getByRole('button', { name: /activities \/ record/i }).click();
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
   await expect(page.getByRole('heading', { name: /activities & submissions/i })).toBeVisible({ timeout: 20_000 });
   if (process.env.QA_NEW_USER_EXPECT_EMPTY === '1') await expect(page.getByText(/0 loaded/)).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: /add activity/i }).last().click();
@@ -205,8 +205,8 @@ test('confirmed new faculty can persist an activity across reload', async ({ pag
   await expect(page.getByText(title, { exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: /activities \/ record/i }).click();
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
   await expect(page.getByText(title, { exact: true })).toBeVisible({ timeout: 30_000 });
 
   expect(diagnostics.consoleErrors, diagnostics.consoleErrors.join('\n')).toEqual([]);
@@ -227,9 +227,9 @@ test('confirmed new faculty can upload, attach and download evidence', async ({ 
   await page.locator('#signin-email').fill(email);
   await page.locator('#signin-password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).last().click();
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
 
-  await page.getByRole('button', { name: /activities \/ record/i }).click();
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
   await expect(page.getByRole('heading', { name: /activities & submissions/i })).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: /add activity/i }).last().click();
   await page.locator('#activity-title').fill(activityTitle);
@@ -251,7 +251,7 @@ test('confirmed new faculty can upload, attach and download evidence', async ({ 
   await page.getByRole('button', { name: /upload file/i }).click();
   await expect(page.getByText(fileName, { exact: true }).first()).toBeVisible({ timeout: 20_000 });
 
-  await page.getByRole('button', { name: /activities \/ record/i }).click();
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
   await expect(page.getByText(activityTitle, { exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Attached', { exact: true })).toBeVisible({ timeout: 20_000 });
 
@@ -259,7 +259,7 @@ test('confirmed new faculty can upload, attach and download evidence', async ({ 
   await expect(page.getByText(fileName, { exact: true }).first()).toBeVisible({ timeout: 20_000 });
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Evidence Library', exact: true }).click();
   await expect(page.getByText(fileName, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
   const downloadPopup = page.waitForEvent('popup', { timeout: 30_000 });
@@ -299,7 +299,7 @@ test('faculty and admin complete the appraisal review loop without a manual refr
       login(facultyPage, facultyEmail, facultyPassword),
       login(adminPage, adminEmail, adminPassword),
     ]);
-    await expect(facultyPage.getByRole('heading', { name: /welcome,/i })).toBeVisible({ timeout: 30_000 });
+    await expect(facultyPage.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
     await expect(adminPage.getByRole('heading', { name: /institution admin console/i })).toBeVisible({ timeout: 30_000 });
 
     await facultyPage.getByRole('button', { name: /self-appraisal/i }).click();
@@ -346,4 +346,81 @@ test('faculty and admin complete the appraisal review loop without a manual refr
   expect(adminDiagnostics.consoleErrors, adminDiagnostics.consoleErrors.join('\n')).toEqual([]);
   expect(adminDiagnostics.failedRequests, adminDiagnostics.failedRequests.join('\n')).toEqual([]);
   expect(adminDiagnostics.badResponses, adminDiagnostics.badResponses.join('\n')).toEqual([]);
+});
+
+test('faculty can paste a Google Scholar profile: mismatch is rejected, a real import updates the dashboard count and survives reload, and a re-paste is not double-counted', async ({ page }) => {
+  const email = process.env.QA_FACULTY_EMAIL;
+  const password = process.env.QA_FACULTY_PASSWORD;
+  test.skip(!email || !password, 'Set QA_FACULTY_EMAIL and QA_FACULTY_PASSWORD for the live Scholar import flow.');
+  test.setTimeout(120_000);
+
+  const diagnostics = collectDiagnostics(page);
+  const publicationCount = (json) => json?.category_counts?.publication ?? json?.data?.category_counts?.publication ?? 0;
+
+  await page.goto('/login');
+  await page.locator('#signin-email').fill(email);
+  await page.locator('#signin-password').fill(password);
+  const initialDashboard = page.waitForResponse((res) => res.url().includes('/dashboard/faculty') && res.request().method() === 'GET');
+  await page.getByRole('button', { name: /sign in/i }).last().click();
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
+  const beforeCount = publicationCount(await (await initialDashboard).json());
+
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
+  await expect(page.getByRole('heading', { name: /activities & submissions/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Get Google Scholar')).toBeVisible({ timeout: 15_000 });
+  const pasteBox = page.getByLabel('Pasted Google Scholar profile content');
+
+  // 1. A pasted page whose owner isn't this faculty member must be rejected,
+  //    with nothing written -- the identity gate has no override.
+  const mismatchText = [
+    'Someone Else Entirely', 'Professor of Physics', '', 'Citations', '3', '', 'h-index', '2', '', 'i10-index', '1', '',
+    'Title', 'A Completely Unrelated Paper By Someone Else', 'Someone Else Entirely, A Colleague',
+    'Journal of Physics, 1, 2021', 'Cited by 3',
+  ].join('\n');
+  await pasteBox.fill(mismatchText);
+  await pasteBox.press('Enter');
+  await expect(page.getByText(/doesn't match your profile name/i)).toBeVisible({ timeout: 30_000 });
+
+  // 2. A genuine, new-to-this-record publication under the real profile name
+  //    should auto-import with no per-item confirm click, and the dashboard
+  //    count should reflect exactly the delta the API reports.
+  const newPaperTitle = `Explainable AI Techniques for Clinical Decision Support Systems ${Date.now()}`;
+  const scholarText = [
+    'Dr. Priya Menon', 'Professor of Computer Science', '', 'Citations', '1842', '', 'h-index', '21', '', 'i10-index', '34', '',
+    'Title', newPaperTitle, 'Priya Menon, Arjun Rao', 'Journal of Biomedical Informatics, 58, 2023', 'Cited by 41',
+  ].join('\n');
+  await pasteBox.fill(scholarText);
+  await pasteBox.press('Enter');
+  await expect(page.getByText(/^Imported 1 publication for/i)).toBeVisible({ timeout: 30_000 });
+
+  const afterImportDashboard = page.waitForResponse((res) => res.url().includes('/dashboard/faculty') && res.request().method() === 'GET');
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  const afterImportCount = publicationCount(await (await afterImportDashboard).json());
+  expect(afterImportCount, 'dashboard publication count should increase by exactly 1 newly-imported item').toBe(beforeCount + 1);
+
+  // 3. The count must persist from the database across a reload (a fresh
+  //    page load defaults back to the dashboard view), not just live in
+  //    client-side state.
+  const afterReloadDashboard = page.waitForResponse((res) => res.url().includes('/dashboard/faculty') && res.request().method() === 'GET');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /^good (morning|afternoon|evening),/i })).toBeVisible({ timeout: 30_000 });
+  const afterReloadCount = publicationCount(await (await afterReloadDashboard).json());
+  expect(afterReloadCount, 'the imported publication must persist across a reload, not just live in client state').toBe(beforeCount + 1);
+
+  // 4. Re-pasting the same profile must not create a duplicate or inflate
+  //    the count a second time.
+  await page.getByRole('button', { name: /activities (&|and|\/) record/i }).click();
+  await expect(page.getByRole('heading', { name: /activities & submissions/i })).toBeVisible({ timeout: 20_000 });
+  await pasteBox.fill(scholarText);
+  await pasteBox.press('Enter');
+  await expect(page.getByText(/^Imported 0 publications for/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/already accounted for and skipped/i)).toBeVisible();
+
+  const afterRepasteDashboard = page.waitForResponse((res) => res.url().includes('/dashboard/faculty') && res.request().method() === 'GET');
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  const afterRepasteCount = publicationCount(await (await afterRepasteDashboard).json());
+  expect(afterRepasteCount, 're-pasting the same profile must not double-count').toBe(beforeCount + 1);
+
+  expect(diagnostics.consoleErrors, diagnostics.consoleErrors.join('\n')).toEqual([]);
+  expect(diagnostics.failedRequests, diagnostics.failedRequests.join('\n')).toEqual([]);
 });

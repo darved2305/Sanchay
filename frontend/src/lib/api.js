@@ -158,6 +158,7 @@ export const api = {
     sync: () => apiRequest('/publications/sync', { method: 'POST' }),
     confirm: (id) => apiRequest(`/publications/candidates/${id}/confirm`, { method: 'POST' }),
     reject: (id) => apiRequest(`/publications/candidates/${id}/reject`, { method: 'POST' }),
+    scholarImport: (text) => apiRequest('/publications/scholar-import', { method: 'POST', body: { text } }),
   },
 
   notifications: (params) => apiRequest(`/notifications${queryString(params)}`),

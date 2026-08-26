@@ -175,6 +175,12 @@ class QuickAddRequest(BaseModel):
     text: str = Field(min_length=3, max_length=1000)
 
 
+class ScholarImportRequest(BaseModel):
+    # A full Google Scholar profile page (Ctrl+A copy) with dozens of
+    # publications comfortably runs well past a few thousand characters.
+    text: str = Field(min_length=40, max_length=60000)
+
+
 class CareerGoalSetRequest(BaseModel):
     career_rule_id: UUID
 

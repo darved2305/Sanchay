@@ -11,6 +11,7 @@ import { runtimeConfigMessage } from '../lib/config';
 import {
   Button, CategoryChip, EmptyState, FilterChip, Notice, Skeleton, StatusBadge,
 } from '../components/ui';
+import GoogleScholarImportCard from '../components/GoogleScholarImportCard';
 import { cardEnter, pageEnter } from '../lib/motion';
 
 const FILTERS = [
@@ -167,6 +168,14 @@ export default function ActivitiesSubmissions({ onOpenAddModal, setCurrentView, 
           </button>
         </section>
       </div>
+
+      <GoogleScholarImportCard
+        onImported={() => {
+          invalidateQueries(['activities']);
+          invalidateQueries(['dashboard', 'faculty']);
+          invalidateQueries(['publications', 'candidates']);
+        }}
+      />
 
       {actionError && (
         <Notice tone="error">
