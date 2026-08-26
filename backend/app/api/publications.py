@@ -20,7 +20,6 @@ from ..connectors.publications import (
     normalize_title,
     scholar_identity_match,
 )
-from ..core.academic_year import derive_academic_year
 from ..core.auth import CurrentUser, require_faculty
 from ..core.config import Settings, get_settings
 from ..core.db import get_db
@@ -347,10 +346,7 @@ async def _confirm_publication_as_activity(
 
     candidate_id = candidate["id"]
     year = candidate.get("year")
-    # The academic year runs July-June, so it cannot be derived from the
-    # calendar year alone — a March 2026 paper belongs to 2025-26, not 2026-27.
-    publication_month = int(candidate.get("month") or 1)
-    academic_year = derive_academic_year(date(int(year), publication_month, 1)) if year else "unspecified"
+    academic_year = f"{year}-{str((int(year) + 1) % 100).zfill(2)}" if year else "unspecified"
     metadata = {
         "publication_id": str(candidate["publication_id"]),
         "candidate_id": str(candidate_id),

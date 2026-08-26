@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
-from pydantic import Field, HttpUrl, SecretStr, ValidationInfo, field_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # A relative ".env" resolves against whatever directory the process happened
@@ -58,11 +58,6 @@ class Settings(BaseSettings):
     supabase_evidence_bucket: str = "evidence"
     supabase_generated_bucket: str = "generated"
     signed_url_ttl_seconds: int = Field(default=60, ge=30, le=3600)
-    # A link the assistant hands back sits in the conversation, not on a page
-    # the user is already looking at: they read the reply, scroll, maybe switch
-    # tabs, and come back. The 60s default above is tuned for a link clicked
-    # immediately from a document list and expires before it is ever used here.
-    assistant_document_url_ttl_seconds: int = Field(default=900, ge=60, le=3600)
 
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     cors_allow_credentials: bool = True
@@ -101,33 +96,6 @@ class Settings(BaseSettings):
     llm_vision_model: str = "qwen/qwen3.6-27b"
     llm_timeout_seconds: float = Field(default=15.0, gt=0)
 
-    # Optional OpenRouter backend. Both providers speak the OpenAI chat
-    # completions dialect, so selecting one only swaps base URL, key and model
-    # -- no second client. Groq stays the default because the extraction paths
-    # were tuned for its latency; OpenRouter exists mainly so the assistant can
-    # reach a stronger tool-calling model than the fast extraction default.
-    llm_provider: Literal["groq", "openrouter"] = "groq"
-    openrouter_api_key: SecretStr | None = None
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "anthropic/claude-sonnet-4.5"
-    openrouter_vision_model: str = "anthropic/claude-sonnet-4.5"
-    # OpenRouter attributes traffic to an app via these headers; harmless when
-    # unset, and only sent on the OpenRouter path.
-    openrouter_app_url: str | None = None
-    openrouter_app_title: str = "Sanchaya"
-    # Decline provider hosts whose p90 latency is already above this (seconds).
-    # OpenRouter reorders candidates rather than failing the request.
-    openrouter_max_latency_p90: float = Field(default=8.0, gt=0)
-    # Ordered fallbacks tried when the primary model is unavailable or rate
-    # limited upstream. Free/stealth models share a pool that returns 429 under
-    # load, so a demo without a fallback is one shared-pool spike from failing.
-    openrouter_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=list)
-
-    # Optional override so the assistant's agent loop can run a different (and
-    # usually stronger) model than the 23 extraction services, whose prompts are
-    # tuned for a fast cheap one. Falls back to the active provider's default.
-    agent_model: str | None = None
-
     # Google OAuth (Gmail/Calendar/Drive) for Reconstruct My Year. Read-only
     # scopes only; absent credentials keep the connector in a clean
     # "not configured" state rather than crashing.
@@ -135,42 +103,6 @@ class Settings(BaseSettings):
     google_oauth_client_secret: SecretStr | None = None
     google_oauth_redirect_uri: str | None = None
     reconstruct_fake_sources: bool = False
-
-    @field_validator(
-        "llm_model",
-        "llm_vision_model",
-        "openrouter_model",
-        "openrouter_vision_model",
-        "openrouter_base_url",
-        "agent_model",
-        "openrouter_app_url",
-        mode="before",
-    )
-    @classmethod
-    def blank_means_unset(cls, value: object, info: ValidationInfo) -> object:
-        """Treat ``KEY=`` in a .env file as absent rather than as an empty string.
-
-        Clearing a value is the obvious way to "turn it off", but
-        pydantic-settings still sees the key and hands over ``""``, which
-        overrides the default. That produced a request with ``"model": ""`` --
-        a provider 400 that reads like the assistant is down rather than like a
-        config typo. Falling back to the declared default keeps a blank line
-        behaving the same as a missing one.
-        """
-
-        if isinstance(value, str) and not value.strip():
-            field = cls.model_fields.get(info.field_name or "")
-            return field.get_default(call_default_factory=True) if field else None
-        return value
-
-    @field_validator("openrouter_fallback_models", mode="before")
-    @classmethod
-    def parse_fallback_models(cls, value: object) -> object:
-        if value is None or isinstance(value, list):
-            return value or []
-        if isinstance(value, str):
-            return [model.strip() for model in value.split(",") if model.strip()]
-        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod

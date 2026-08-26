@@ -44,28 +44,6 @@ def is_valid_submission_transition(current: str, target: str) -> bool:
     return target in VALID_TRANSITIONS.get(str(current), set())
 
 
-def _item_counts_towards_readiness(item: dict[str, Any]) -> bool:
-    """Whether a section item proves the section has been filled in.
-
-    Items reach this helper in two shapes: the readiness/draft path passes raw
-    ``academic_activities`` rows (status and evidence on the item itself), while
-    the submission path nests them under ``activity`` alongside free-text
-    entries that carry no activity at all.
-    """
-
-    activity = item.get("activity") or {}
-    status = item.get("status", item.get("activity_status", activity.get("status")))
-    evidence = item.get(
-        "evidence_status",
-        item.get("activity_evidence_status", activity.get("evidence_status")),
-    )
-    if status is None and not activity and str(item.get("free_text") or "").strip():
-        # A faculty-written narrative entry stands on its own — there is no
-        # activity row to confirm, so the section is not blocked by one.
-        return True
-    return status == "confirmed" and evidence in {None, "attached", "none_needed"}
-
-
 def compute_appraisal_readiness(sections: list[dict[str, Any]]) -> float:
     """Percentage of required sections containing confirmed activity items."""
 
@@ -75,7 +53,11 @@ def compute_appraisal_readiness(sections: list[dict[str, Any]]) -> float:
     complete = 0
     for section in required:
         items = section.get("items") or []
-        if any(_item_counts_towards_readiness(item) for item in items):
+        if any(
+            item.get("status", item.get("activity_status")) == "confirmed"
+            and item.get("evidence_status", item.get("activity_evidence_status")) in {None, "attached", "none_needed"}
+            for item in items
+        ):
             complete += 1
     return round(complete * 100 / len(required), 2)
 
@@ -126,24 +108,6 @@ async def _sections(session: AsyncSession, template_id: UUID) -> list[dict[str, 
     return [dict(row) for row in result.mappings().all()]
 
 
-def academic_year_digits(value: str | None) -> str:
-    """Reduce an academic-year label to comparable digits.
-
-    ``academic_year`` is free text on both activities and cycles, so the same
-    year arrives as ``2025-26``, ``2025-2026``, ``2025/26`` or with stray
-    whitespace depending on which importer or form wrote it. Comparing the raw
-    strings silently drops those activities out of the appraisal, so both sides
-    are normalised to a four-digit start year plus a two-digit end year.
-    """
-
-    digits = "".join(character for character in str(value or "") if character.isdigit())
-    if len(digits) == 8:  # 20252026 -> 202526
-        return digits[:4] + digits[6:]
-    if len(digits) == 4:  # a bare "2025" means the year that starts in 2025
-        return digits + str((int(digits) + 1) % 100).zfill(2)
-    return digits
-
-
 async def _activities_for_cycle(session: AsyncSession, profile_id: UUID, academic_year: str) -> list[dict[str, Any]]:
     result = await session.execute(
         text(
@@ -152,18 +116,13 @@ async def _activities_for_cycle(session: AsyncSession, profile_id: UUID, academi
                    start_date, end_date, academic_year, doi, url, metadata, evidence_status::text as evidence_status,
                    status::text as status
             from public.academic_activities
-            where owner_id = :profile_id and status = 'confirmed'
+            where owner_id = :profile_id and academic_year = :academic_year and status = 'confirmed'
             order by coalesce(start_date, created_at::date), created_at
             """
         ),
-        {"profile_id": profile_id},
+        {"profile_id": profile_id, "academic_year": academic_year},
     )
-    wanted = academic_year_digits(academic_year)
-    return [
-        dict(row)
-        for row in result.mappings().all()
-        if academic_year_digits(row["academic_year"]) == wanted
-    ]
+    return [dict(row) for row in result.mappings().all()]
 
 
 def _category_matches(section: dict[str, Any], category: str) -> bool:
@@ -241,10 +200,6 @@ async def _submission(session: AsyncSession, submission_id: UUID, user: CurrentU
                 } if row["activity_id"] else None,
             })
     payload["sections"] = list(sections.values())
-    # The stored column is a cache written at draft time. Items change under it
-    # via the items PATCH, so recompute from what the submission actually holds
-    # rather than reporting a percentage frozen at generation.
-    payload["readiness"] = compute_appraisal_readiness(payload["sections"])
     reviews = await session.execute(
         text(
             """
@@ -259,16 +214,6 @@ async def _submission(session: AsyncSession, submission_id: UUID, user: CurrentU
     payload["reviews"] = rows_to_dicts(reviews.mappings().all())
     payload["activity_count"] = sum(len(section["items"]) for section in payload["sections"])
     return payload
-
-
-async def _persist_readiness(session: AsyncSession, submission_id: UUID, readiness_value: float) -> None:
-    """Write the recomputed percentage back so reviewer queues stay in step."""
-
-    await session.execute(
-        text("update public.appraisal_submissions set readiness = :readiness, updated_at = now() where id = :id"),
-        {"readiness": readiness_value, "id": submission_id},
-    )
-    await session.commit()
 
 
 @router.get("/cycles")
@@ -376,9 +321,7 @@ async def update_submission_items(
             {"submission_id": submission_id, **item.model_dump()},
         )
     await session.commit()
-    refreshed = await _submission(session, submission_id, user)
-    await _persist_readiness(session, submission_id, refreshed["readiness"])
-    return refreshed
+    return await _submission(session, submission_id, user)
 
 
 @router.post("/submissions/{submission_id}/submit")
@@ -391,9 +334,7 @@ async def submit_submission(submission_id: UUID, user: CurrentUser = Depends(req
     for row in admins.mappings().all():
         await session.execute(text("insert into public.notifications(profile_id, kind, title, body, link_path) values (:profile_id, 'submission_status', 'New appraisal submission', :body, :link_path)"), {"profile_id": row["id"], "body": f"{submission['full_name']} submitted {submission['cycle_name']} for review.", "link_path": "/admin"})
     await session.commit()
-    refreshed = await _submission(session, submission_id, user)
-    await _persist_readiness(session, submission_id, refreshed["readiness"])
-    return refreshed
+    return await _submission(session, submission_id, user)
 
 
 @router.post("/submissions/{submission_id}/review")
